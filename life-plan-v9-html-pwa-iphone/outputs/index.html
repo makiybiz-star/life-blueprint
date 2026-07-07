@@ -1,0 +1,2093 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Life Blueprint v9</title>
+    <link rel="manifest" href="./manifest.webmanifest">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Life Blueprint">
+    <link rel="apple-touch-icon" href="./icons/icon-192.png">
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .snap-x { scroll-behavior: smooth; -webkit-overflow-scrolling: touch; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        /* UI polish: keep the single-file app lightweight while improving tap targets and readability. */
+        :root { color-scheme: light; }
+        html { scroll-padding-top: 72px; }
+        body { background: linear-gradient(180deg, #f8fafc 0%, #eef2ff 38%, #f8fafc 100%); }
+        button, input, select { touch-action: manipulation; }
+        button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid #6366f1; outline-offset: 2px; }
+        nav { backdrop-filter: saturate(160%) blur(10px); }
+        .app-shell { animation: fade-in 180ms ease-out; }
+        .task-card { contain: content; }
+        .mobile-bottom-nav, .quick-add-fab { display: none; }
+        #mobile-board-container { display: none; }
+        @media (max-width: 767px) {
+            html { scroll-padding-top: 58px; }
+            body {
+                padding-bottom: calc(108px + env(safe-area-inset-bottom)) !important;
+            }
+            .desktop-page-tabs { display: none; }
+            .mobile-bottom-nav {
+                display: grid;
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+                padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+            }
+            .mobile-nav-button {
+                min-height: 44px;
+                border-radius: 14px;
+            }
+            .quick-add-fab {
+                display: flex;
+                right: 18px;
+                bottom: calc(88px + env(safe-area-inset-bottom));
+                width: 56px;
+                height: 56px;
+            }
+            .mobile-touch-target { min-height: 44px; }
+            main.app-shell { padding: 12px 12px 0; }
+            #board-scroll-container { display: none !important; }
+            #mobile-board-container { display: block; }
+            .mobile-board-action { min-height: 40px; }
+            #settingsModal > div,
+            #quickTaskModal > div {
+                max-height: calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+                padding-bottom: calc(20px + env(safe-area-inset-bottom));
+            }
+        }
+        @keyframes fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+        @media (prefers-reduced-motion: reduce) {
+            *, ::before, ::after { animation-duration: 0.01ms !important; scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans min-h-screen pb-12">
+
+    <!-- TOP NAVIGATION BAR -->
+    <nav class="bg-slate-900 text-white px-4 py-3 flex justify-between items-center shadow-md sticky top-0 z-40">
+        <div class="flex items-center gap-1.5">
+            <span class="text-lg">🧭</span>
+            <span class="font-black tracking-wider text-xs sm:text-sm">Life Blueprint <span class="text-[10px] font-normal text-slate-400">v9</span></span>
+        </div>
+        <div class="flex items-center gap-3">
+            <div class="desktop-page-tabs flex bg-slate-800 p-0.5 rounded-lg text-[10px] sm:text-[11px] font-bold">
+                <button id="tab-home" onclick="switchPage('home')" class="px-2 sm:px-3 py-1 rounded-md bg-indigo-600 text-white transition-all cursor-pointer">🏠 今日</button>
+                <button id="tab-dashboard" onclick="switchPage('dashboard')" class="px-2 sm:px-3 py-1 rounded-md text-slate-400 hover:text-white transition-all cursor-pointer">📊 ダッシュ</button>
+                <button id="tab-taskboard" onclick="switchPage('taskboard')" class="px-2 sm:px-3 py-1 rounded-md text-slate-400 hover:text-white transition-all cursor-pointer">📋 ボード</button>
+                <button id="tab-planner" onclick="switchPage('planner')" class="px-2 sm:px-3 py-1 rounded-md text-slate-400 hover:text-white transition-all cursor-pointer">🔮 計画書</button>
+            </div>
+            <button type="button" onclick="openSettingsModal()" title="設定" class="text-slate-300 hover:text-white text-xs sm:text-sm font-bold cursor-pointer transition-colors px-2.5 py-1 rounded-md bg-slate-800">設定</button>
+            <input type="file" id="import-file-input" accept="application/json" class="hidden" onchange="importAllData(event)">
+        </div>
+    </nav>
+
+
+    <nav class="mobile-bottom-nav fixed inset-x-0 bottom-0 z-50 bg-slate-950/95 text-slate-300 border-t border-white/10 shadow-2xl backdrop-blur-md">
+        <button id="mobile-tab-home" type="button" onclick="switchPage('home')" class="mobile-nav-button flex flex-col items-center justify-center gap-0.5 text-[10px] font-black">
+            <span class="text-base leading-none">🏠</span>
+            <span>今日</span>
+        </button>
+        <button id="mobile-tab-dashboard" type="button" onclick="switchPage('dashboard')" class="mobile-nav-button flex flex-col items-center justify-center gap-0.5 text-[10px] font-black">
+            <span class="text-base leading-none">📊</span>
+            <span>ダッシュ</span>
+        </button>
+        <button id="mobile-tab-taskboard" type="button" onclick="switchPage('taskboard')" class="mobile-nav-button flex flex-col items-center justify-center gap-0.5 text-[10px] font-black">
+            <span class="text-base leading-none">📋</span>
+            <span>ボード</span>
+        </button>
+        <button id="mobile-tab-planner" type="button" onclick="switchPage('planner')" class="mobile-nav-button flex flex-col items-center justify-center gap-0.5 text-[10px] font-black">
+            <span class="text-base leading-none">🔮</span>
+            <span>計画書</span>
+        </button>
+    </nav>
+
+    <main class="app-shell max-w-7xl mx-auto p-3 sm:p-6 space-y-4">
+        
+
+        <!-- ==========================================
+             PAGE 0: HOME / TODAY
+             ========================================== -->
+        <div id="page-home" class="space-y-4">
+            <section class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div class="lg:col-span-2 bg-white border border-slate-200 rounded-xl shadow-xs p-4 space-y-3">
+                    <div class="flex items-center justify-between gap-3">
+                        <div>
+                            <h1 class="text-base font-black text-slate-900">今日やること</h1>
+                            <p id="home-date-label" class="text-[11px] text-slate-500 font-bold"></p>
+                        </div>
+                        <div class="text-right">
+                            <div id="today-completion-rate" class="text-3xl font-black text-indigo-600">0%</div>
+                            <div class="text-[10px] text-slate-400 font-bold">今日の達成率</div>
+                        </div>
+                    </div>
+                    <div class="h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div id="today-progress-bar" class="h-full bg-indigo-600 rounded-full transition-all" style="width:0%"></div>
+                    </div>
+                    <div id="home-today-list" class="space-y-2"></div>
+                </div>
+
+                <aside class="space-y-4">
+                    <div class="bg-slate-900 text-white border border-slate-800 rounded-xl shadow-xs p-4">
+                        <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">連続達成日数</p>
+                        <div class="flex items-end gap-2 mt-1">
+                            <span id="streak-days" class="text-4xl font-black text-amber-400">0</span>
+                            <span class="text-sm font-bold pb-1">日</span>
+                        </div>
+                        <p id="streak-status" class="text-[11px] text-slate-300 mt-2"></p>
+                    </div>
+
+                    <div class="bg-white border border-slate-200 rounded-xl shadow-xs p-4 space-y-2">
+                        <h2 class="text-xs font-black text-slate-800">今日のAIアドバイス</h2>
+                        <p id="ai-advice" class="text-[12px] leading-relaxed text-slate-600"></p>
+                    </div>
+                </aside>
+            </section>
+
+            <section class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div class="bg-white border border-slate-200 rounded-xl shadow-xs p-4 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <h2 class="text-xs font-black text-slate-800">プロジェクト管理</h2>
+                        <span id="project-count" class="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-bold">0</span>
+                    </div>
+                    <div id="project-list" class="space-y-2"></div>
+                    <div class="grid grid-cols-[1fr_auto] gap-2 pt-2 border-t border-slate-100">
+                        <input id="input-project-name" type="text" onkeydown="if(event.key==='Enter') addProject()" placeholder="新しいプロジェクト..." class="min-w-0 text-[11px] border border-slate-200 rounded px-2 py-1.5">
+                        <button onclick="addProject()" class="bg-slate-900 text-white text-[10px] font-bold px-3 rounded cursor-pointer">追加</button>
+                    </div>
+                </div>
+
+                <div class="lg:col-span-2 bg-white border border-slate-200 rounded-xl shadow-xs p-4 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <h2 class="text-xs font-black text-slate-800">カレンダー</h2>
+                        <span id="calendar-month-label" class="text-[11px] text-slate-500 font-bold"></span>
+                    </div>
+                    <div class="grid grid-cols-7 gap-1 text-center text-[10px] font-bold text-slate-400">
+                        <span>日</span><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span>
+                    </div>
+                    <div id="calendar-grid" class="grid grid-cols-7 gap-1"></div>
+                </div>
+            </section>
+        </div>
+
+        <!-- ==========================================
+             PAGE 1: DASHBOARD
+             ========================================== -->
+        <div id="page-dashboard" class="hidden space-y-4">
+            
+            <!-- ⏳ LIFE TIMER SECTION -->
+            <div class="bg-slate-900 text-white p-4 rounded-xl shadow-md border border-slate-800 relative overflow-hidden">
+                <div class="absolute right-0 bottom-0 text-slate-800/30 text-7xl font-black select-none pointer-events-none -mb-4 -mr-2">TIME</div>
+                <div class="flex justify-between items-center mb-1.5 relative z-10">
+                    <p class="text-[10px] text-amber-400 font-bold tracking-wider uppercase flex items-center gap-1">⏳ 寿限タイマー (<span id="timer-expectancy-label">平均寿命84歳</span>として算出)</p>
+                    <button type="button" onclick="openBirthModal()" class="text-slate-200 hover:text-white text-[11px] bg-slate-800 px-2 py-1 rounded cursor-pointer transition-colors border border-slate-700 block z-30">⚙️ 生年月日設定</button>
+                </div>
+                <div class="grid grid-cols-5 gap-1.5 text-center relative z-10">
+                    <div class="bg-slate-800/80 p-2 rounded-lg"><div id="timer-years" class="text-base sm:text-2xl font-black text-amber-400">--</div><div class="text-[9px] text-slate-400 font-bold">残り年数</div></div>
+                    <div class="bg-slate-800/80 p-2 rounded-lg"><div id="timer-days" class="text-base sm:text-2xl font-black text-slate-100">--</div><div class="text-[9px] text-slate-400 font-bold">日数</div></div>
+                    <div class="bg-slate-800/80 p-2 rounded-lg"><div id="timer-hours" class="text-base sm:text-2xl font-black text-slate-100">--</div><div class="text-[9px] text-slate-400 font-bold">時間</div></div>
+                    <div class="bg-slate-800/80 p-2 rounded-lg"><div id="timer-mins" class="text-base sm:text-2xl font-black text-slate-100">--</div><div class="text-[9px] text-slate-400 font-bold">分</div></div>
+                    <div class="bg-slate-800/80 p-2 rounded-lg"><div id="timer-secs" class="text-base sm:text-2xl font-black text-rose-400">--</div><div class="text-[9px] text-slate-400 font-bold">秒</div></div>
+                </div>
+            </div>
+
+            <!-- MAIN DASHBOARD GRID -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div class="lg:col-span-2 space-y-4">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="md:col-span-2 bg-white p-4 rounded-xl shadow-xs border border-slate-200 space-y-3">
+                            <h2 class="text-xs font-black text-slate-700 flex items-center gap-1">📊 最上位目標の進捗状況</h2>
+                            <div id="charts-container" class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 max-h-64 overflow-y-auto pr-1"></div>
+                        </div>
+                        <div class="bg-white p-4 rounded-xl shadow-xs border border-slate-200 space-y-2 flex flex-col justify-between">
+                            <h2 class="text-xs font-black text-slate-700">🧭 人生のバランス (分野別)</h2>
+                            <div class="w-full h-40 relative flex items-center justify-center">
+                                <canvas id="balanceChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 🚀 TOP TARGETS LIST -->
+                    <div class="bg-white p-4 rounded-xl shadow-xs border border-slate-200 space-y-3">
+                        <h2 class="text-xs font-black text-slate-700 flex items-center gap-1">🚀 現在の最上位目標 (中長期ビジョン)</h2>
+                        <div id="dashboard-longterm-container" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
+                    </div>
+
+                    <!-- 🔁 ROUTINE HABIT TRACKER -->
+                    <div class="bg-white p-4 rounded-xl shadow-xs border border-slate-200 space-y-3">
+                        <h2 class="text-xs font-black text-slate-700 flex items-center gap-1">🔁 習慣マスタールーティン (自動レーン追加システム)</h2>
+                        <div id="routine-list-container" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
+                        <div class="pt-2 border-t border-slate-100 grid grid-cols-1 sm:flex gap-1.5 text-[11px]">
+                            <input type="text" id="input-routine-text" placeholder="習慣化したい行動（例: 筋トレをする）..." class="flex-1 border border-slate-200 rounded px-2 py-1.5 focus:outline-indigo-500">
+                            <select id="select-routine-period" class="border border-slate-200 rounded px-1.5 bg-slate-50">
+                                <option value="daily">🔁 毎日（今日へ自動追加）</option>
+                                <option value="weekly">📅 毎週月曜（今週へ自動追加）</option>
+                            </select>
+                            <select id="select-routine-category" class="border border-slate-200 rounded px-1.5 bg-slate-50"></select>
+                            <button onclick="addRoutineItem()" class="bg-indigo-600 text-white font-bold px-3 py-1 rounded cursor-pointer shrink-0">登録</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- RIGHT: BUCKET LIST -->
+                <div class="bg-white p-4 rounded-xl shadow-xs border border-slate-200 space-y-3">
+                    <h2 class="text-xs font-black text-slate-700 flex items-center gap-1">🎈 Bucket List (人生でやりたいこと)</h2>
+                    <div id="bucket-list-container" class="space-y-2 max-h-[500px] overflow-y-auto pr-1"></div>
+                    <div class="pt-2 border-t border-slate-100 flex gap-1">
+                        <input type="text" id="input-bucket" onkeydown="if(event.key==='Enter') addBucketItem()" placeholder="死ぬまでにやりたいこと..." class="flex-1 text-[11px] border border-slate-200 rounded px-2 py-1 focus:outline-indigo-500">
+                        <button onclick="addBucketItem()" class="bg-slate-800 text-white text-[10px] font-bold px-2 rounded cursor-pointer">追加</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==========================================
+             PAGE 2: TASK BOARD
+             ========================================== -->
+        <div id="page-taskboard" class="hidden space-y-3">
+            <!-- SMARTPHONE STEP NAVIGATOR -->
+            <div class="lg:hidden sticky top-[45px] bg-slate-50/95 backdrop-blur-md py-2 px-1 z-30 border-b border-slate-200 -mx-3">
+                <div class="flex justify-between items-center max-w-sm mx-auto px-4">
+                    <button onclick="scrollToLane('longTerm')" class="flex flex-col items-center gap-1"><span class="w-7 h-7 rounded-full bg-indigo-600 text-white text-xs font-black flex items-center justify-center shadow-xs">1</span><span class="text-[9px] text-slate-500 font-bold">中長期</span></button>
+                    <div class="h-0.5 bg-slate-300 flex-1 -mt-4"></div>
+                    <button onclick="scrollToLane('shortTerm')" class="flex flex-col items-center gap-1"><span class="w-7 h-7 rounded-full bg-amber-500 text-white text-xs font-black flex items-center justify-center shadow-xs">2</span><span class="text-[9px] text-slate-500 font-bold">短期</span></button>
+                    <div class="h-0.5 bg-slate-300 flex-1 -mt-4"></div>
+                    <button onclick="scrollToLane('thisYear')" class="flex flex-col items-center gap-1"><span class="w-7 h-7 rounded-full bg-emerald-500 text-white text-xs font-black flex items-center justify-center shadow-xs">3</span><span class="text-[9px] text-slate-500 font-bold">今月</span></button>
+                    <div class="h-0.5 bg-slate-300 flex-1 -mt-4"></div>
+                    <button onclick="scrollToLane('thisWeek')" class="flex flex-col items-center gap-1"><span class="w-7 h-7 rounded-full bg-sky-500 text-white text-xs font-black flex items-center justify-center shadow-xs">4</span><span class="text-[9px] text-slate-500 font-bold">今週</span></button>
+                    <div class="h-0.5 bg-slate-300 flex-1 -mt-4"></div>
+                    <button onclick="scrollToLane('today')" class="flex flex-col items-center gap-1"><span class="w-7 h-7 rounded-full bg-purple-600 text-white text-xs font-black flex items-center justify-center shadow-xs">5</span><span class="text-[9px] text-slate-500 font-bold">今日</span></button>
+                </div>
+            </div>
+
+            <div id="mobile-board-container" class="space-y-3"></div>
+
+            <!-- BOARD SCROLL CONTAINER -->
+            <div id="board-scroll-container" class="flex overflow-x-auto gap-4 pb-4 items-start snap-x snap-mandatory no-scrollbar w-full pt-1">
+                <!-- LANE 1 -->
+                <div id="col-longTerm" class="bg-slate-200/60 p-3 rounded-xl w-[88vw] sm:w-72 lg:w-64 shrink-0 shadow-2xs snap-center flex flex-col max-h-[80vh]">
+                    <h3 class="text-[11px] font-black text-slate-700 mb-2 flex justify-between items-center shrink-0">
+                        <span>🚀 1. 中長期目標 (3~5年)</span><span id="count-longTerm" class="bg-slate-300 px-1.5 py-0.2 rounded-full text-[9px]">0</span>
+                    </h3>
+                    <div class="overflow-y-auto flex-1 pr-0.5 space-y-2 mb-2 no-scrollbar">
+                        <div id="lane-longTerm" class="space-y-2 min-h-[10px]"></div>
+                        <div id="done-lane-longTerm" class="space-y-2 pt-2 border-t border-slate-300/60"></div>
+                    </div>
+                    <div class="bg-white p-2 rounded-lg border border-slate-200 space-y-1.5 text-[11px] shrink-0">
+                        <input type="text" id="input-longTerm" onkeydown="handleEnter(event, 'longTerm')" placeholder="目標を入力してEnter..." class="w-full border-b border-slate-100 py-1 focus:outline-none bg-transparent">
+                        <div class="grid grid-cols-2 gap-1">
+                            <select id="category-longTerm" class="w-full text-[10px] bg-slate-50 border border-slate-200 rounded p-0.5"></select>
+                            <input type="date" id="date-longTerm" class="w-full text-[10px] bg-slate-50 border border-slate-200 rounded p-0.5">
+                        </div>
+                        <button onclick="addTask('longTerm')" class="w-full bg-slate-800 text-white text-[10px] font-bold py-1 rounded cursor-pointer">追加</button>
+                    </div>
+                </div>
+
+                <!-- LANE 2 -->
+                <div id="col-shortTerm" class="bg-slate-200/60 p-3 rounded-xl w-[88vw] sm:w-72 lg:w-64 shrink-0 shadow-2xs snap-center flex flex-col max-h-[80vh]">
+                    <h3 class="text-[11px] font-black text-slate-700 mb-2 flex justify-between items-center shrink-0">
+                        <span>📅 2. 短期目標 (1年)</span><span id="count-shortTerm" class="bg-slate-300 px-1.5 py-0.2 rounded-full text-[9px]">0</span>
+                    </h3>
+                    <div class="overflow-y-auto flex-1 pr-0.5 space-y-2 mb-2 no-scrollbar">
+                        <div id="lane-shortTerm" class="space-y-2 min-h-[10px]"></div>
+                        <div id="done-lane-shortTerm" class="space-y-2 pt-2 border-t border-slate-300/60"></div>
+                    </div>
+                    <div class="bg-white p-2 rounded-lg border border-slate-200 space-y-1.5 text-[11px] shrink-0">
+                        <select id="select-shortTerm" class="w-full text-[10px] bg-slate-50 p-1 rounded border border-slate-200 text-slate-600 truncate"></select>
+                        <input type="text" id="input-shortTerm" onkeydown="handleEnter(event, 'shortTerm')" placeholder="目標を入力..." class="w-full border-b border-slate-100 py-1 focus:outline-none bg-transparent">
+                        <div class="grid grid-cols-2 gap-1">
+                            <select id="category-shortTerm" class="w-full text-[10px] bg-slate-50 border border-slate-200 rounded p-0.5"></select>
+                            <input type="date" id="date-shortTerm" class="w-full text-[10px] bg-slate-50 border border-slate-200 rounded p-0.5">
+                        </div>
+                        <button onclick="addTask('shortTerm')" class="w-full bg-slate-800 text-white text-[10px] font-bold py-1 rounded cursor-pointer">追加</button>
+                    </div>
+                </div>
+
+                <!-- LANE 3 -->
+                <div id="col-thisYear" class="bg-slate-200/60 p-3 rounded-xl w-[88vw] sm:w-72 lg:w-64 shrink-0 shadow-2xs snap-center flex flex-col max-h-[80vh]">
+                    <h3 class="text-[11px] font-black text-slate-700 mb-2 flex justify-between items-center shrink-0">
+                        <span>📆 3. 今月・今年の行動</span><span id="count-thisYear" class="bg-slate-300 px-1.5 py-0.2 rounded-full text-[9px]">0</span>
+                    </h3>
+                    <div class="overflow-y-auto flex-1 pr-0.5 space-y-2 mb-2 no-scrollbar">
+                        <div id="lane-thisYear" class="space-y-2 min-h-[10px]"></div>
+                        <div id="done-lane-thisYear" class="space-y-2 pt-2 border-t border-slate-300/60"></div>
+                    </div>
+                    <div class="bg-white p-2 rounded-lg border border-slate-200 space-y-1.5 text-[11px] shrink-0">
+                        <select id="select-thisYear" class="w-full text-[10px] bg-slate-50 p-1 rounded border border-slate-200 text-slate-600 truncate"></select>
+                        <input type="text" id="input-thisYear" onkeydown="handleEnter(event, 'thisYear')" placeholder="行動を入力..." class="w-full border-b border-slate-100 py-1 focus:outline-none bg-transparent">
+                        <div class="grid grid-cols-2 gap-1">
+                            <select id="category-thisYear" class="w-full text-[10px] bg-slate-50 border border-slate-200 rounded p-0.5"></select>
+                            <input type="date" id="date-thisYear" class="w-full text-[10px] bg-slate-50 border border-slate-200 rounded p-0.5">
+                        </div>
+                        <button onclick="addTask('thisYear')" class="w-full bg-slate-800 text-white text-[10px] font-bold py-1 rounded cursor-pointer">追加</button>
+                    </div>
+                </div>
+
+                <!-- LANE 4 -->
+                <div id="col-thisWeek" class="bg-slate-200/60 p-3 rounded-xl w-[88vw] sm:w-72 lg:w-64 shrink-0 shadow-2xs snap-center flex flex-col max-h-[80vh]">
+                    <h3 class="text-[11px] font-black text-slate-700 mb-2 flex justify-between items-center shrink-0">
+                        <span>🏃 4. 今週のタスク</span><span id="count-thisWeek" class="bg-slate-300 px-1.5 py-0.2 rounded-full text-[9px]">0</span>
+                    </h3>
+                    <div class="overflow-y-auto flex-1 pr-0.5 space-y-2 mb-2 no-scrollbar">
+                        <div id="lane-thisWeek" class="space-y-2 min-h-[10px]"></div>
+                        <div id="done-lane-thisWeek" class="space-y-2 pt-2 border-t border-slate-300/60"></div>
+                    </div>
+                    <div class="bg-white p-2 rounded-lg border border-slate-200 space-y-1.5 text-[11px] shrink-0">
+                        <select id="select-thisWeek" class="w-full text-[10px] bg-slate-50 p-1 rounded border border-slate-200 text-slate-600 truncate"></select>
+                        <input type="text" id="input-thisWeek" onkeydown="handleEnter(event, 'thisWeek')" placeholder="タスクを入力..." class="w-full border-b border-slate-100 py-1 focus:outline-none bg-transparent">
+                        <div class="grid grid-cols-2 gap-1">
+                            <select id="category-thisWeek" class="w-full text-[10px] bg-slate-50 border border-slate-200 rounded p-0.5"></select>
+                            <input type="date" id="date-thisWeek" class="w-full text-[10px] bg-slate-50 border border-slate-200 rounded p-0.5">
+                        </div>
+                        <button onclick="addTask('thisWeek')" class="w-full bg-slate-800 text-white text-[10px] font-bold py-1 rounded cursor-pointer">追加</button>
+                    </div>
+                </div>
+
+                <!-- LANE 5 -->
+                <div id="col-today" class="bg-slate-200/60 p-3 rounded-xl w-[88vw] sm:w-72 lg:w-64 shrink-0 shadow-2xs snap-center flex flex-col max-h-[80vh]">
+                    <h3 class="text-[11px] font-black text-slate-700 mb-2 flex justify-between items-center shrink-0">
+                        <span>☀️ 5. 今日のタスク</span><span id="count-today" class="bg-slate-300 px-1.5 py-0.2 rounded-full text-[9px]">0</span>
+                    </h3>
+                    <div class="overflow-y-auto flex-1 pr-0.5 space-y-2 mb-2 no-scrollbar">
+                        <div id="lane-today" class="space-y-2 min-h-[10px]"></div>
+                        <div id="done-lane-today" class="space-y-2 pt-2 border-t border-slate-300/60"></div>
+                    </div>
+                    <div class="bg-white p-2 rounded-lg border border-slate-200 space-y-1.5 text-[11px] shrink-0">
+                        <select id="select-today" class="w-full text-[10px] bg-slate-50 p-1 rounded border border-slate-200 text-slate-600 truncate"></select>
+                        <input type="text" id="input-today" onkeydown="handleEnter(event, 'today')" placeholder="タスクを入力..." class="w-full border-b border-slate-100 py-1 focus:outline-none bg-transparent">
+                        <div class="grid grid-cols-2 gap-1">
+                            <select id="category-today" class="w-full text-[10px] bg-slate-50 border border-slate-200 rounded p-0.5"></select>
+                            <input type="date" id="date-today" class="w-full text-[10px] bg-slate-50 border border-slate-200 rounded p-0.5">
+                        </div>
+                        <button onclick="addTask('today')" class="w-full bg-purple-600 text-white text-[10px] font-bold py-1 rounded cursor-pointer">追加</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==========================================
+             PAGE 3: 🔮 人生計画書シミュレーター
+             ========================================== -->
+        <div id="page-planner" class="hidden space-y-4">
+            
+            <!-- USER PROFILE FORM -->
+            <div class="bg-white p-4 rounded-xl shadow-md border border-slate-200 space-y-3">
+                <h2 class="text-sm font-black text-slate-800 flex items-center gap-1">👤 ライフプラン・プロフィール設定</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-[11px]">
+                    <div class="space-y-1">
+                        <label class="text-slate-500 font-bold block">現在の年齢・性別</label>
+                        <div class="flex gap-1">
+                            <input type="number" id="plan-age" value="30" class="w-16 p-1.5 border border-slate-200 rounded">
+                            <select id="plan-gender" class="flex-1 p-1.5 border border-slate-200 bg-slate-50 rounded">
+                                <option value="male">男性 (平均寿命 81歳)</option>
+                                <option value="female">女性 (平均寿命 87歳)</option>
+                                <option value="neutral">全体平均 (84歳)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-slate-500 font-bold block">現在の経済状況 (月額/貯蓄)</label>
+                        <div class="flex gap-1 items-center">
+                            <input type="number" id="plan-income" value="30" placeholder="手取り" class="w-16 p-1.5 border border-slate-200 rounded"> <span class="text-slate-400">万給 /</span>
+                            <input type="number" id="plan-expense" value="22" placeholder="支出" class="w-16 p-1.5 border border-slate-200 rounded"> <span class="text-slate-400">万出</span>
+                        </div>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-slate-500 font-bold block">現在の総貯蓄額 / 新NISA積立</label>
+                        <div class="flex gap-1 items-center">
+                            <input type="number" id="plan-savings" value="200" class="w-18 p-1.5 border border-slate-200 rounded"> <span class="text-slate-400">万円 /</span>
+                            <input type="number" id="plan-nisa" value="5" class="w-14 p-1.5 border border-slate-200 rounded"> <span class="text-slate-400">万円積立</span>
+                        </div>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-slate-500 font-bold block">大切にしたい価値観</label>
+                        <select id="plan-priority" class="w-full p-1.5 border border-slate-200 bg-slate-50 rounded">
+                            <option value="both">💼 趣味（旅行等）と仕事を両立・自己投資</option>
+                            <option value="fire">🔥 早期リタイア（FIRE）を目指す</option>
+                            <option value="family">🏠 家族との時間を最優先にする</option>
+                            <option value="career">🚀 キャリア・スキルアップ一点集中</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-[11px] pt-2 border-t border-dashed border-slate-100">
+                    <div class="space-y-1">
+                        <label class="text-slate-500 font-bold block">💍 希望 of 結婚年齢 / 予算自己負担分</label>
+                        <div class="flex gap-1.5 items-center">
+                            <input type="number" id="plan-marriage-age" value="35" class="w-16 p-1.5 border border-slate-200 rounded"> <span class="text-slate-400">歳までに結婚 / 予算</span>
+                            <input type="number" id="plan-marriage-cost" value="200" class="w-16 p-1.5 border border-slate-200 rounded"> <span class="text-slate-400">万円</span>
+                        </div>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-slate-500 font-bold block">🏠 希望 of 住宅購入年齢 / 必要頭金</label>
+                        <div class="flex gap-1.5 items-center">
+                            <input type="number" id="plan-housing-age" value="38" class="w-16 p-1.5 border border-slate-200 rounded"> <span class="text-slate-400">歳で購入 / 頭金</span>
+                            <input type="number" id="plan-housing-cost" value="400" class="w-16 p-1.5 border border-slate-200 rounded"> <span class="text-slate-400">万円</span>
+                        </div>
+                    </div>
+                    <div class="flex items-end">
+                        <button onclick="calculateLifePlan()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 rounded-lg cursor-pointer transition-colors text-xs shadow-xs">🔮 人生設計書をシミュレーションする</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- OUTPUT SECTION -->
+            <div id="plan-output-section" class="grid grid-cols-1 lg:grid-cols-3 gap-4 hidden">
+                
+                <!-- 1. 【未来のタイムライン】 -->
+                <div class="bg-white p-4 rounded-xl shadow-md border border-slate-200 space-y-3">
+                    <h3 class="text-xs font-black text-indigo-700 flex items-center gap-1 border-b border-indigo-50 pb-1.5">🗺️ 1. 未来のタイムライン</h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-[10px] text-left border-collapse">
+                            <thead>
+                                <tr class="border-b border-slate-200 text-slate-500 font-bold">
+                                    <th class="pb-1.5">年齢</th>
+                                    <th class="pb-1.5">予定ライフイベント</th>
+                                    <th class="pb-1.5 text-right">費用目安</th>
+                                </tr>
+                            </thead>
+                            <tbody id="timeline-body" class="divide-y divide-slate-100">
+                                <!-- Dynamic JS values -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <p class="text-[9px] text-slate-400">※費用目安は日本国内の平均統計をベースにした概算自己負担想定です。</p>
+                </div>
+
+                <!-- 2. 【価値観のアドバイス】 -->
+                <div class="bg-white p-4 rounded-xl shadow-md border border-slate-200 space-y-3 flex flex-col justify-between">
+                    <div>
+                        <h3 class="text-xs font-black text-indigo-700 flex items-center gap-1 border-b border-indigo-50 pb-1.5">💡 2. 価値観のアドバイス</h3>
+                        <div id="value-advice-content" class="text-[11px] leading-relaxed text-slate-700 space-y-2 pt-1.5">
+                            <!-- Dynamic advice -->
+                        </div>
+                    </div>
+                    <div class="bg-indigo-50/50 p-2 rounded-lg text-[9px] text-indigo-700 border border-indigo-100/50 mt-2 shrink-0">
+                        🔑 <strong>アドバイスの鍵:</strong> 自己投資を続けながら、収支の最適化を図ることで理想の両立が実現します。
+                    </div>
+                </div>
+
+                <!-- 3. 【家計・貯蓄シミュレーション】 -->
+                <div class="bg-white p-4 rounded-xl shadow-md border border-slate-200 space-y-3">
+                    <h3 class="text-xs font-black text-indigo-700 flex items-center gap-1 border-b border-indigo-50 pb-1.5">📈 3. 家計・貯蓄シミュレーション</h3>
+                    
+                    <div class="w-full h-40 relative flex items-center justify-center">
+                        <canvas id="projectionChart"></canvas>
+                    </div>
+
+                    <div class="bg-slate-900 text-white p-2.5 rounded-lg text-center">
+                        <p class="text-[9px] text-slate-400 uppercase tracking-wider font-bold">65歳時点の想定総資産額</p>
+                        <p id="calc-65-asset" class="text-sm sm:text-base font-black text-emerald-400">-- 万円</p>
+                        <p id="calc-65-breakdown" class="text-[8px] text-slate-400">(現金貯金 --万 / NISA積立運用 --万)</p>
+                    </div>
+
+                    <!-- マネーアクションプラン -->
+                    <div class="space-y-2">
+                        <h4 class="text-[10px] font-bold text-slate-600 uppercase tracking-wider">🔥 今すぐできるマネーアクション</h4>
+                        <div id="money-actions" class="space-y-1.5 text-[10px] text-slate-700">
+                            <!-- JS values -->
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- UNCALCULATED STATE -->
+            <div id="plan-uncalculated" class="bg-white p-8 rounded-xl border border-slate-200 text-center space-y-2">
+                <span class="text-4xl">🔮</span>
+                <h3 class="text-xs font-bold text-slate-700">プロフィール情報を入力して、計画書を出力してください</h3>
+                <p class="text-[10px] text-slate-400">現在と将来の状況を入力すると、タイムラインや生涯の資産シミュレーション自動計算、アドバイスがリアルタイムで出力されます。</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- UNDO TOAST -->
+    <div id="undo-toast" class="hidden fixed bottom-4 left-1/2 -translate-x-1/2 z-[110] bg-slate-900 text-white text-[11px] font-bold px-4 py-2.5 rounded-full shadow-xl flex items-center gap-3">
+        <span id="undo-toast-msg">削除しました</span>
+        <button onclick="undoLastDelete()" class="text-amber-400 hover:text-amber-300 cursor-pointer underline underline-offset-2">元に戻す</button>
+    </div>
+
+
+    <!-- SETTINGS MODAL -->
+    <div id="settingsModal" class="hidden fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-end sm:items-center justify-center z-[100] p-3 sm:p-4">
+        <div class="bg-white rounded-t-2xl sm:rounded-xl shadow-xl w-full max-w-md p-5 space-y-4 text-[12px] max-h-[92vh] overflow-y-auto">
+            <div class="flex items-center justify-between gap-3">
+                <div>
+                    <h4 class="font-black text-slate-900 text-base">設定</h4>
+                    <p class="text-[11px] text-slate-500 font-bold">アプリと保存データの管理</p>
+                </div>
+                <button type="button" onclick="closeSettingsModal()" class="mobile-touch-target w-11 rounded-full bg-slate-100 text-slate-500 font-black">×</button>
+            </div>
+            <div class="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+                <div>
+                    <h5 class="font-black text-slate-800">データ管理</h5>
+                    <p class="text-[11px] text-slate-500">バックアップ、復元、初期化をここから実行できます。</p>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <button type="button" onclick="exportAllData()" class="min-h-11 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-100 font-black">バックアップ</button>
+                    <button type="button" onclick="document.getElementById('import-file-input').click()" class="min-h-11 rounded-lg bg-sky-50 text-sky-700 border border-sky-100 font-black">復元</button>
+                </div>
+                <div class="pt-2 border-t border-slate-200 space-y-2">
+                    <p class="text-[11px] text-rose-600">初期化すると現在の目標、習慣、ライフプランデータがデフォルト状態に戻ります。</p>
+                    <button type="button" onclick="resetAllData()" class="w-full min-h-11 rounded-lg bg-rose-600 text-white font-black">すべて初期化</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <button type="button" onclick="openQuickTaskModal()" class="quick-add-fab fixed z-[70] items-center justify-center rounded-full bg-indigo-600 text-white text-3xl font-light shadow-2xl shadow-indigo-900/30 active:scale-95 transition-transform" aria-label="タスクを追加">+</button>
+
+    <!-- QUICK ADD TASK MODAL -->
+    <div id="quickTaskModal" class="hidden fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-end sm:items-center justify-center z-[100] p-3 sm:p-4">
+        <div class="bg-white rounded-t-2xl sm:rounded-xl shadow-xl w-full max-w-sm p-5 space-y-4 text-[12px] max-h-[92vh] overflow-y-auto">
+            <div class="flex items-center justify-between">
+                <h4 class="font-black text-slate-900 text-sm">タスクを追加</h4>
+                <button type="button" onclick="closeQuickTaskModal()" class="mobile-touch-target w-11 rounded-full bg-slate-100 text-slate-500 font-black">×</button>
+            </div>
+            <div class="space-y-1.5">
+                <label class="text-slate-500 block font-bold">タスク名</label>
+                <input type="text" id="quick-task-text" class="mobile-touch-target w-full p-3 border border-slate-200 rounded-lg font-medium text-slate-800 text-sm" placeholder="今日やることを入力">
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+                <div class="space-y-1.5">
+                    <label class="text-slate-500 block font-bold">追加先レーン</label>
+                    <select id="quick-task-layer" class="mobile-touch-target w-full p-2.5 border border-slate-200 rounded-lg bg-slate-50 text-sm">
+                        <option value="today">今日</option>
+                        <option value="thisWeek">今週</option>
+                        <option value="thisYear">今月・今年</option>
+                        <option value="shortTerm">短期</option>
+                        <option value="longTerm">中長期</option>
+                    </select>
+                </div>
+                <div class="space-y-1.5">
+                    <label class="text-slate-500 block font-bold">優先度</label>
+                    <select id="quick-task-priority" class="mobile-touch-target w-full p-2.5 border border-slate-200 rounded-lg bg-slate-50 text-sm">
+                        <option value="high">高</option>
+                        <option value="medium">中</option>
+                        <option value="low">低</option>
+                    </select>
+                </div>
+            </div>
+            <div class="space-y-1.5">
+                <label class="text-slate-500 block font-bold">カテゴリ</label>
+                <select id="quick-task-category" class="mobile-touch-target w-full p-2.5 border border-slate-200 rounded-lg bg-slate-50 text-sm"></select>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+                <div class="space-y-1.5">
+                    <label class="text-slate-500 block font-bold">期限</label>
+                    <input type="date" id="quick-task-date" class="mobile-touch-target w-full p-2.5 border border-slate-200 rounded-lg bg-slate-50 text-sm">
+                </div>
+                <div class="space-y-1.5">
+                    <label class="text-slate-500 block font-bold">プロジェクト</label>
+                    <select id="quick-task-project" class="mobile-touch-target w-full p-2.5 border border-slate-200 rounded-lg bg-slate-50 text-sm"></select>
+                </div>
+            </div>
+            <div class="grid grid-cols-[1fr_1.4fr] gap-2 pt-1">
+                <button type="button" onclick="closeQuickTaskModal()" class="mobile-touch-target px-3 py-3 bg-slate-100 text-slate-600 font-bold rounded-lg">キャンセル</button>
+                <button type="button" onclick="submitQuickTask()" class="mobile-touch-target px-3 py-3 bg-indigo-600 text-white font-black rounded-lg">追加する</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- BIRTHDAY MODAL -->
+    <div id="birthModal" class="hidden fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center z-[100] p-4">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-sm p-5 space-y-3 text-[11px]">
+            <h4 class="font-bold text-slate-800 text-xs flex items-center gap-1">📆 生年月日の設定</h4>
+            <div class="space-y-1"><input type="date" id="input-birth" class="w-full p-2 border border-slate-200 rounded text-xs"></div>
+            <div class="flex justify-end gap-2 pt-2">
+                <button type="button" onclick="closeBirthModal()" class="px-3 py-1.5 bg-slate-100 text-slate-600 font-bold rounded cursor-pointer">キャンセル</button>
+                <button type="button" onclick="saveBirthday()" class="px-3 py-1.5 bg-indigo-600 text-white font-bold rounded cursor-pointer">保存する</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- EDIT TASK MODAL -->
+    <div id="editModal" class="hidden fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center z-[100] p-4">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-sm p-5 space-y-3 text-[11px]">
+            <h4 class="font-bold text-slate-800 text-xs">📝 タスクの編集・詳細設定</h4>
+            <input type="hidden" id="edit-layer"><input type="hidden" id="edit-index">
+            <div class="space-y-1">
+                <label class="text-slate-500 block font-bold">タスク名</label>
+                <input type="text" id="edit-text" class="w-full p-2 border border-slate-200 rounded font-medium text-slate-800 text-xs">
+            </div>
+            <div class="space-y-1">
+                <label class="text-slate-500 block font-bold">人生のカテゴリ（バランス）</label>
+                <select id="edit-category" class="w-full p-2 border border-slate-200 rounded bg-slate-50 text-xs"></select>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+                <div class="space-y-1">
+                    <label class="text-slate-500 block font-bold">優先順位</label>
+                    <select id="edit-priority" class="w-full p-2 border border-slate-200 rounded bg-slate-50 text-xs">
+                        <option value="high">高</option>
+                        <option value="medium">中</option>
+                        <option value="low">低</option>
+                    </select>
+                </div>
+                <div class="space-y-1">
+                    <label class="text-slate-500 block font-bold">プロジェクト</label>
+                    <select id="edit-project" class="w-full p-2 border border-slate-200 rounded bg-slate-50 text-xs"></select>
+                </div>
+            </div>
+            <div id="edit-parent-container" class="space-y-1">
+                <label class="text-slate-500 block font-bold">紐づく親目標</label>
+                <select id="edit-parent" class="w-full p-2 border border-slate-200 rounded bg-slate-50 text-xs"></select>
+            </div>
+            <div class="space-y-1">
+                <label class="text-slate-500 block font-bold">期限設定</label>
+                <input type="date" id="edit-date" class="w-full p-2 border border-slate-200 rounded text-xs">
+            </div>
+            <div class="flex justify-end gap-2 pt-2">
+                <button type="button" onclick="closeEditModal()" class="px-3 py-1.5 bg-slate-100 text-slate-600 font-bold rounded">キャンセル</button>
+                <button type="button" onclick="saveTaskEdit()" class="px-3 py-1.5 bg-indigo-600 text-white font-bold rounded">保存する</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        /**
+         * Refactor notes
+         * - Storage keys are centralized to preserve localStorage compatibility.
+         * - Small DOM/storage helpers make this file easier to split into modules later.
+         * - Render helpers build HTML in arrays where practical to reduce repeated DOM writes.
+         */
+        const STORAGE_KEYS = Object.freeze({
+            tasks: 'life_blueprint_tasks',
+            buckets: 'life_blueprint_buckets',
+            routines: 'life_blueprint_routines',
+            birth: 'life_blueprint_birth',
+            lastDate: 'life_blueprint_last_date',
+            planner: 'life_blueprint_planner',
+            projects: 'life_blueprint_projects',
+            streak: 'life_blueprint_streak'
+        });
+        const LAYERS = Object.freeze(['longTerm', 'shortTerm', 'thisYear', 'thisWeek', 'today']);
+        const PAGES = Object.freeze(['home', 'dashboard', 'taskboard', 'planner']);
+        const MOBILE_BOARD_SECTIONS = Object.freeze([
+            { layer: 'today', title: '今日のタスク', accent: 'bg-purple-600' },
+            { layer: 'thisWeek', title: '今週のタスク', accent: 'bg-sky-500' },
+            { layer: 'thisYear', title: '今月・今年の行動', accent: 'bg-emerald-500' },
+            { layer: 'shortTerm', title: '短期目標', accent: 'bg-amber-500' },
+            { layer: 'longTerm', title: '中長期目標', accent: 'bg-indigo-600' }
+        ]);
+        const $ = (id) => document.getElementById(id);
+        const getTodayString = () => new Date().toISOString().split('T')[0];
+        const cloneData = (value) => JSON.parse(JSON.stringify(value));
+        const escapeHTML = (value = '') => String(value).replace(/[&<>'"]/g, (char) => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+        }[char]));
+        const storage = {
+            read(key, fallback = null) {
+                const raw = localStorage.getItem(key);
+                if (raw === null) return fallback;
+                try { return JSON.parse(raw); } catch (_) { return raw; }
+            },
+            write(key, value) {
+                localStorage.setItem(key, typeof value === 'string' ? value : JSON.stringify(value));
+            },
+            clearAppData() {
+                Object.values(STORAGE_KEYS).forEach((key) => localStorage.removeItem(key));
+            }
+        };
+        const COLOR_PALETTE = [
+            { border: 'border-t-indigo-500 border-l-indigo-500', bg: 'bg-indigo-50 text-indigo-700', dot: '🔵', hex: '#4f46e5', borderLeft: 'border-l-indigo-500' },
+            { border: 'border-t-emerald-500 border-l-emerald-500', bg: 'bg-emerald-50 text-emerald-700', dot: '🟢', hex: '#10b981', borderLeft: 'border-l-emerald-500' },
+            { border: 'border-t-amber-500 border-l-amber-500', bg: 'bg-amber-50 text-amber-700', dot: '🟡', hex: '#f59e0b', borderLeft: 'border-l-amber-500' },
+            { border: 'border-t-rose-500 border-l-rose-500', bg: 'bg-rose-50 text-rose-700', dot: '🔴', hex: '#f43f5e', borderLeft: 'border-l-rose-500' },
+            { border: 'border-t-purple-500 border-l-purple-500', bg: 'bg-purple-50 text-purple-700', dot: '🟣', hex: '#a855f7', borderLeft: 'border-l-purple-500' }
+        ];
+
+        const PRIORITY_CONFIG = Object.freeze({
+            high: { label: '高', className: 'bg-rose-50 text-rose-600 border-rose-100', rank: 0 },
+            medium: { label: '中', className: 'bg-amber-50 text-amber-600 border-amber-100', rank: 1 },
+            low: { label: '低', className: 'bg-slate-100 text-slate-500 border-slate-200', rank: 2 }
+        });
+
+        const DEFAULT_PROJECTS = [
+            { id: 1, name: 'ライフデザイン', color: '#4f46e5' },
+            { id: 2, name: '健康づくり', color: '#10b981' }
+        ];
+
+        const CATEGORIES = {
+            work: { label: "💰 工作・お金", color: "text-amber-600", bg: "bg-amber-50" },
+            health: { label: "🏃 健康・美容", color: "text-emerald-600", bg: "bg-emerald-50" },
+            hobby: { label: "🎨 趣味・教養", color: "text-indigo-600", bg: "bg-indigo-50" },
+            life: { label: "🏠 家族・生活", color: "text-purple-600", bg: "bg-purple-50" },
+            mind: { label: "🧘 精神・整え", color: "text-sky-600", bg: "bg-sky-50" },
+            none: { label: "🏳️ 分野なし", color: "text-slate-500", bg: "bg-slate-100" }
+        };
+
+        const DEFAULT_TASKS = {
+            longTerm: [
+                { id: 101, text: "独立して自由なビジネスを築く", done: false, colorIndex: 0, date: "2029-12-31", cat: "work" },
+                { id: 102, text: "健康的な体作りの基盤を作る", done: false, colorIndex: 1, date: "2027-06-30", cat: "health" }
+            ], shortTerm: [
+                { id: 201, parentId: 101, text: "年間120万円を確実に貯蓄に回す", done: true, date: "2026-12-31", cat: "work" },
+                { id: 202, parentId: 102, text: "週3回の運動習慣を定着させる", done: false, date: "2026-08-31", cat: "health" }
+            ], thisYear: [
+                { id: 301, parentId: 201, text: "固定費（サブスクなど）を徹底見直し", done: false, date: "2026-07-31", cat: "work" }
+            ], thisWeek: [
+                { id: 401, parentId: 301, text: "利用中サブスクの月額費用洗い出し", done: false, date: "2026-07-12", cat: "work" }
+            ], today: [
+                { id: 501, parentId: 401, text: "不要なサブスクを2つ解約する", done: false, date: "2026-07-08", cat: "work" }
+            ]
+        };
+
+        const DEFAULT_BUCKETS = [
+            { text: "オーロラをこの目で見る", done: false },
+            { text: "本を1冊出版してみる", done: false },
+            { text: "ハワイのビーチで1ヶ月間リモートワーク", done: true }
+        ];
+
+        let taskStore = {};
+        let bucketList = [];
+        let routineStore = [];
+        let projectStore = [];
+        let streakStore = { count: 0, lastCompletedDate: '', completedDates: [] };
+        let chartInstances = {};
+        let balanceChartInstance = null;
+        let projectionChartInstance = null;
+        let birthday = "1995-01-01";
+        let lastCheckedDate = "";
+        let laneExpanded = {};
+        let mobileBoardExpanded = { today: true, thisWeek: true, thisYear: false, shortTerm: false, longTerm: false };
+        const LIFE_EXPECTANCY_BY_GENDER = { male: 81, female: 87, neutral: 84 };
+        function getLifeExpectancy() {
+            return LIFE_EXPECTANCY_BY_GENDER[plannerInput.gender] || 84;
+        }
+
+        let plannerInput = { age: 30, gender: "male", income: 30, expense: 22, savings: 200, nisa: 5, priority: "both", marriageAge: 35, marriageCost: 200, housingAge: 38, housingCost: 400 };
+
+        window.onload = function() {
+            initCategoryDropdowns();
+            loadAllData();
+            processRoutines();
+            normalizeAllTasks();
+            renderBoard();
+            renderMobileBoard();
+            renderHome();
+            renderDashboardData();
+            loadPlannerInputs();
+            calculateLifePlan();
+            setInterval(updateLifeTimer, 1000);
+            updateLifeTimer();
+        };
+
+        function initCategoryDropdowns() {
+            const list = LAYERS;
+            list.forEach(layer => {
+                const sel = document.getElementById(`category-${layer}`);
+                if(sel) {
+                    sel.innerHTML = '';
+                    Object.keys(CATEGORIES).forEach(k => {
+                        sel.innerHTML += `<option value="${k}">${CATEGORIES[k].label}</option>`;
+                    });
+                }
+                if(laneExpanded[layer] === undefined) laneExpanded[layer] = false;
+            });
+            const routineCat = document.getElementById(`select-routine-category`);
+            if(routineCat) {
+                routineCat.innerHTML = '';
+                Object.keys(CATEGORIES).forEach(k => {
+                    if(k!=='none') routineCat.innerHTML += `<option value="${k}">${CATEGORIES[k].label}</option>`;
+                });
+            }
+            initTaskMetaControls();
+        }
+
+        function initTaskMetaControls() {
+            LAYERS.forEach((layer) => {
+                const dateInput = document.getElementById(`date-${layer}`);
+                if(!dateInput || document.getElementById(`meta-${layer}`)) return;
+                const wrapper = document.createElement('div');
+                wrapper.id = `meta-${layer}`;
+                wrapper.className = 'grid grid-cols-2 gap-1';
+                wrapper.innerHTML = `
+                    <select id="priority-${layer}" class="w-full text-[10px] bg-slate-50 border border-slate-200 rounded p-0.5">
+                        <option value="high">優先:高</option>
+                        <option value="medium" ${layer === 'today' ? '' : 'selected'}>優先:中</option>
+                        <option value="low">優先:低</option>
+                    </select>
+                    <select id="project-${layer}" class="w-full text-[10px] bg-slate-50 border border-slate-200 rounded p-0.5"></select>
+                `;
+                dateInput.closest('.grid')?.insertAdjacentElement('afterend', wrapper);
+            });
+            refreshProjectControls();
+        }
+
+        function refreshProjectControls() {
+            LAYERS.forEach((layer) => populateProjectSelect(document.getElementById(`project-${layer}`)));
+        }
+
+
+        function getProject(projectId) {
+            return projectStore.find((project) => project.id === Number(projectId));
+        }
+
+        function normalizeTask(task, layer) {
+            if(!task.priority) task.priority = layer === 'today' ? 'high' : 'medium';
+            if(task.projectId === undefined) task.projectId = '';
+            if(!task.createdAt) task.createdAt = getTodayString();
+            return task;
+        }
+
+        function normalizeAllTasks() {
+            LAYERS.forEach((layer) => taskStore[layer].forEach((task) => normalizeTask(task, layer)));
+        }
+
+        function getAllTasks() {
+            return LAYERS.flatMap((layer) => taskStore[layer].map((task, idx) => ({ ...task, layer, idx })));
+        }
+
+        function getTodayTasks() {
+            const today = getTodayString();
+            return taskStore.today
+                .map((task, idx) => ({ ...task, layer: 'today', idx }))
+                .filter((task) => (task.date || today) <= today)
+                .sort((a, b) => (PRIORITY_CONFIG[a.priority || 'medium']?.rank ?? 1) - (PRIORITY_CONFIG[b.priority || 'medium']?.rank ?? 1));
+        }
+
+        function getTodayStats() {
+            const tasks = getTodayTasks();
+            const done = tasks.filter((task) => task.done).length;
+            const total = tasks.length;
+            return { tasks, done, total, percent: total ? Math.round((done / total) * 100) : 0 };
+        }
+
+        function processRoutines() {
+            const todayStr = getTodayString();
+            if (lastCheckedDate === todayStr) return;
+            const currentDayOfWeek = new Date().getDay();
+            routineStore.forEach(r => {
+                if (r.period === 'daily') {
+                    const exist = taskStore.today.some(t => t.text.includes(r.text));
+                    if (!exist) {
+                        taskStore.today.push({ id: Date.now() + Math.random(), parentId: 0, text: `[🔁習慣] ${escapeHTML(r.text)}`, done: false, date: todayStr, cat: r.cat || 'none' });
+                    }
+                } else if (r.period === 'weekly' && currentDayOfWeek === 1) {
+                    const exist = taskStore.thisWeek.some(t => t.text.includes(r.text));
+                    if (!exist) {
+                        taskStore.thisWeek.push({ id: Date.now() + Math.random(), parentId: 0, text: `[🔁習慣] ${escapeHTML(r.text)}`, done: false, date: todayStr, cat: r.cat || 'none' });
+                    }
+                }
+            });
+            lastCheckedDate = todayStr;
+            storage.write(STORAGE_KEYS.lastDate, lastCheckedDate);
+            saveAllData();
+        }
+
+        function renderRoutineList() {
+            const container = document.getElementById('routine-list-container');
+            if(!container) return;
+            container.innerHTML = '';
+            routineStore.forEach((r, idx) => {
+                const catLabel = CATEGORIES[r.cat]?.label || "";
+                container.innerHTML += `
+                    <div class="bg-slate-50 p-2 rounded-lg flex justify-between items-center text-[11px] border border-slate-100">
+                        <div>
+                            <span class="font-bold text-slate-800">${escapeHTML(r.text)}</span>
+                            <span class="text-[9px] text-slate-400 block">${r.period === 'daily' ? '🔁毎日' : '📅毎週月曜'} | ${catLabel}</span>
+                        </div>
+                        <button onclick="deleteRoutineItem(${idx})" class="text-slate-300 hover:text-rose-500 font-bold px-1.5 cursor-pointer">✕</button>
+                    </div>
+                `;
+            });
+            if(routineStore.length === 0) container.innerHTML = `<p class="text-[11px] text-slate-400 col-span-2 py-2 text-center">登録されているベース習慣はありません。</p>`;
+        }
+
+        function addRoutineItem() {
+            const txtInput = document.getElementById('input-routine-text');
+            const text = txtInput.value.trim();
+            if(!text) return;
+            const period = document.getElementById('select-routine-period').value;
+            const cat = document.getElementById('select-routine-category').value;
+            routineStore.push({ text, period, cat });
+            txtInput.value = '';
+            saveAllData();
+            renderRoutineList();
+            
+            const todayStr = getTodayString();
+            if(period === 'daily') {
+                taskStore.today.push({ id: Date.now() + Math.random(), parentId: 0, text: `[🔁習慣] ${text}`, done: false, date: todayStr, cat });
+            } else {
+                taskStore.thisWeek.push({ id: Date.now() + Math.random(), parentId: 0, text: `[🔁習慣] ${text}`, done: false, date: todayStr, cat });
+            }
+            saveAllData();
+            renderBoard();
+        }
+
+        function deleteRoutineItem(idx) {
+            const removed = routineStore[idx];
+            routineStore.splice(idx, 1);
+            saveAllData();
+            renderRoutineList();
+            showUndoToast('習慣ルーティンを削除しました', () => {
+                routineStore.splice(idx, 0, removed);
+                saveAllData();
+                renderRoutineList();
+            });
+        }
+
+        let undoRestoreFn = null;
+        let undoTimeoutId = null;
+        function showUndoToast(message, restoreFn) {
+            undoRestoreFn = restoreFn;
+            const toast = document.getElementById('undo-toast');
+            document.getElementById('undo-toast-msg').innerText = message;
+            toast.classList.remove('hidden');
+            if(undoTimeoutId) clearTimeout(undoTimeoutId);
+            undoTimeoutId = setTimeout(() => {
+                toast.classList.add('hidden');
+                undoRestoreFn = null;
+            }, 5000);
+        }
+
+        function undoLastDelete() {
+            if(undoRestoreFn) {
+                undoRestoreFn();
+                undoRestoreFn = null;
+            }
+            if(undoTimeoutId) clearTimeout(undoTimeoutId);
+            document.getElementById('undo-toast').classList.add('hidden');
+        }
+
+        function switchPage(pageId) {
+            PAGES.forEach(p => {
+                document.getElementById(`page-${p}`).classList.add('hidden');
+                document.getElementById(`tab-${p}`).className = "px-2 sm:px-3 py-1 rounded-md text-slate-400 hover:text-white transition-all cursor-pointer";
+            });
+            document.getElementById(`page-${pageId}`).classList.remove('hidden');
+            document.getElementById(`tab-${pageId}`).className = "px-2 sm:px-3 py-1 rounded-md bg-indigo-600 text-white transition-all cursor-pointer";
+            updateMobileNav(pageId);
+
+            if(pageId === 'home') {
+                renderHome();
+            } else if(pageId === 'dashboard') {
+                renderDashboardData();
+            } else if(pageId === 'taskboard') {
+                renderBoard();
+            }
+        }
+
+        function updateMobileNav(pageId) {
+            PAGES.forEach((p) => {
+                const tab = document.getElementById(`mobile-tab-${p}`);
+                if(!tab) return;
+                tab.className = 'mobile-nav-button flex flex-col items-center justify-center gap-0.5 text-[10px] font-black text-slate-400';
+            });
+            const active = document.getElementById(`mobile-tab-${pageId}`);
+            if(active) {
+                active.className = 'mobile-nav-button flex flex-col items-center justify-center gap-0.5 text-[10px] font-black bg-white text-slate-950 shadow-lg';
+            }
+        }
+
+        function openQuickTaskModal(defaultLayer = 'today') {
+            const modal = document.getElementById('quickTaskModal');
+            document.getElementById('quick-task-layer').value = defaultLayer;
+            document.getElementById('quick-task-date').value = getTodayString();
+            document.getElementById('quick-task-priority').value = defaultLayer === 'today' ? 'high' : 'medium';
+            const categorySelect = document.getElementById('quick-task-category');
+            categorySelect.innerHTML = '';
+            Object.keys(CATEGORIES).forEach((key) => {
+                categorySelect.innerHTML += `<option value="${key}">${CATEGORIES[key].label}</option>`;
+            });
+            populateProjectSelect(document.getElementById('quick-task-project'));
+            modal.classList.remove('hidden');
+            setTimeout(() => document.getElementById('quick-task-text')?.focus(), 50);
+        }
+
+        function closeQuickTaskModal() {
+            document.getElementById('quickTaskModal').classList.add('hidden');
+        }
+
+        function openSettingsModal() {
+            document.getElementById('settingsModal').classList.remove('hidden');
+        }
+
+        function closeSettingsModal() {
+            document.getElementById('settingsModal').classList.add('hidden');
+        }
+
+        function submitQuickTask() {
+            const layer = document.getElementById('quick-task-layer').value;
+            const text = document.getElementById('quick-task-text').value.trim();
+            if(!text) {
+                document.getElementById('quick-task-text').focus();
+                return;
+            }
+            document.getElementById(`input-${layer}`).value = text;
+            document.getElementById(`category-${layer}`).value = document.getElementById('quick-task-category').value;
+            document.getElementById(`date-${layer}`).value = document.getElementById('quick-task-date').value;
+            const prioritySelect = document.getElementById(`priority-${layer}`);
+            if(prioritySelect) prioritySelect.value = document.getElementById('quick-task-priority').value;
+            const projectSelect = document.getElementById(`project-${layer}`);
+            if(projectSelect) projectSelect.value = document.getElementById('quick-task-project').value;
+            const parentSelect = document.getElementById(`select-${layer}`);
+            if(parentSelect) parentSelect.value = '0';
+            addTask(layer);
+            document.getElementById('quick-task-text').value = '';
+            closeQuickTaskModal();
+            if(layer === 'today') switchPage('home');
+        }
+
+        function handleEnter(e, layer) {
+            if(e.key === 'Enter') addTask(layer);
+        }
+
+        function addTask(layer) {
+            const txt = document.getElementById(`input-${layer}`).value.trim();
+            if(!txt) return;
+            const cat = document.getElementById(`category-${layer}`).value;
+            const dateVal = document.getElementById(`date-${layer}`).value;
+            const priority = document.getElementById(`priority-${layer}`)?.value || (layer === 'today' ? 'high' : 'medium');
+            const projectValue = document.getElementById(`project-${layer}`)?.value || '';
+            let parentId = 0;
+            const selectParent = document.getElementById(`select-${layer}`);
+            if(selectParent && selectParent.value) {
+                parentId = parseFloat(selectParent.value);
+            }
+
+            const newTask = {
+                id: Date.now() + Math.random(),
+                text: txt,
+                done: false,
+                cat: cat,
+                date: dateVal || getTodayString(),
+                parentId: parentId,
+                priority,
+                projectId: projectValue ? Number(projectValue) : ''
+            };
+
+            if(layer === 'longTerm') {
+                newTask.colorIndex = Math.floor(Math.random() * COLOR_PALETTE.length);
+            }
+
+            taskStore[layer].push(newTask);
+            document.getElementById(`input-${layer}`).value = '';
+            document.getElementById(`date-${layer}`).value = '';
+            
+            saveAllData();
+            renderBoard();
+            updateParentDropdowns();
+        }
+
+        function toggleTask(layer, id) {
+            const task = taskStore[layer].find(t => t.id === id);
+            if(task) {
+                task.done = !task.done;
+                updateStreak();
+                saveAllData();
+                renderBoard();
+                if(!document.getElementById('page-home').classList.contains('hidden')) renderHome();
+                if(!document.getElementById('page-dashboard').classList.contains('hidden')) {
+                    renderDashboardData();
+                }
+            }
+        }
+
+        function deleteTask(layer, id) {
+            const idx = taskStore[layer].findIndex(t => t.id === id);
+            if(idx === -1) return;
+            const removed = taskStore[layer][idx];
+            taskStore[layer].splice(idx, 1);
+            saveAllData();
+            renderBoard();
+            updateParentDropdowns();
+            if(!document.getElementById('page-home').classList.contains('hidden')) renderHome();
+            if(!document.getElementById('page-dashboard').classList.contains('hidden')) renderDashboardData();
+            showUndoToast('タスクを削除しました', () => {
+                taskStore[layer].splice(idx, 0, removed);
+                saveAllData();
+                renderBoard();
+                updateParentDropdowns();
+                renderDashboardData();
+            });
+        }
+
+        function openEditModal(layer, idx) {
+            const task = taskStore[layer][idx];
+            document.getElementById('edit-layer').value = layer;
+            document.getElementById('edit-index').value = idx;
+            document.getElementById('edit-text').value = task.text;
+            document.getElementById('edit-date').value = task.date || "";
+            document.getElementById('edit-priority').value = task.priority || 'medium';
+            populateProjectSelect(document.getElementById('edit-project'), task.projectId || '');
+            
+            const catSel = document.getElementById('edit-category');
+            catSel.innerHTML = '';
+            Object.keys(CATEGORIES).forEach(k => {
+                catSel.innerHTML += `<option value="${k}" ${task.cat === k ? 'selected':''}>${CATEGORIES[k].label}</option>`;
+            });
+
+            const parentContainer = document.getElementById('edit-parent-container');
+            if(layer === 'longTerm') {
+                parentContainer.classList.add('hidden');
+            } else {
+                parentContainer.classList.remove('hidden');
+                const parentSel = document.getElementById('edit-parent');
+                parentSel.innerHTML = '<option value="0">🏳️ 親目標なし</option>';
+                const parentLayer = getParentLayer(layer);
+                taskStore[parentLayer].forEach(p => {
+                    parentSel.innerHTML += `<option value="${p.id}" ${task.parentId === p.id ? 'selected':''}>${p.text}</option>`;
+                });
+            }
+            document.getElementById('editModal').classList.remove('hidden');
+        }
+
+        function closeEditModal() {
+            document.getElementById('editModal').classList.add('hidden');
+        }
+
+        function saveTaskEdit() {
+            const layer = document.getElementById('edit-layer').value;
+            const idx = parseFloat(document.getElementById('edit-index').value);
+            const task = taskStore[layer][idx];
+            
+            task.text = document.getElementById('edit-text').value.trim();
+            task.cat = document.getElementById('edit-category').value;
+            task.date = document.getElementById('edit-date').value;
+            task.priority = document.getElementById('edit-priority').value;
+            task.projectId = document.getElementById('edit-project').value ? Number(document.getElementById('edit-project').value) : '';
+            
+            if(layer !== 'longTerm') {
+                task.parentId = parseFloat(document.getElementById('edit-parent').value);
+            }
+            
+            saveAllData();
+            closeEditModal();
+            renderBoard();
+            renderMobileBoard();
+            renderHome();
+        }
+
+        function getParentLayer(layer) {
+            if(layer === 'shortTerm') return 'longTerm';
+            if(layer === 'thisYear') return 'shortTerm';
+            if(layer === 'thisWeek') return 'thisYear';
+            if(layer === 'today') return 'thisWeek';
+            return 'longTerm';
+        }
+
+        // 🧠 先祖に「完了済みのタスク」が含まれているか、および最上位のcolorIndexを同時にチェックする関数
+        function getParentTaskLabel(layer, parentId) {
+            if(!parentId || layer === 'longTerm') return 'なし';
+            const parentLayer = getParentLayer(layer);
+            const parentTask = taskStore[parentLayer]?.find((task) => task.id === parentId);
+            return parentTask ? parentTask.text : 'なし';
+        }
+
+        function toggleMobileBoardSection(layer) {
+            mobileBoardExpanded[layer] = !mobileBoardExpanded[layer];
+            renderMobileBoard();
+        }
+
+        function renderMobileTaskCard(layer, task, idx) {
+            const catData = CATEGORIES[task.cat || 'none'] || CATEGORIES.none;
+            const priority = PRIORITY_CONFIG[task.priority || 'medium'] || PRIORITY_CONFIG.medium;
+            const parentLabel = getParentTaskLabel(layer, task.parentId);
+            const doneClass = task.done ? 'opacity-60 bg-slate-100' : 'bg-white';
+            const textClass = task.done ? 'line-through text-slate-400' : 'text-slate-900';
+            return `
+                <article class="task-card ${doneClass} border border-slate-200 rounded-lg p-3 shadow-2xs space-y-2">
+                    <div class="flex items-start justify-between gap-2">
+                        <div class="min-w-0 flex-1">
+                            <p class="text-sm font-black leading-snug break-words ${textClass}">${escapeHTML(task.text)}</p>
+                            <p class="text-[10px] text-slate-500 mt-1 truncate">親目標: ${escapeHTML(parentLabel)}</p>
+                        </div>
+                        <button type="button" onclick="toggleTask('${layer}', ${task.id})" class="mobile-board-action shrink-0 rounded-full ${task.done ? 'bg-slate-300 text-slate-600' : 'bg-emerald-600 text-white'} text-[11px] font-black px-3">
+                            ${task.done ? '戻す' : '完了'}
+                        </button>
+                    </div>
+                    <div class="flex flex-wrap gap-1.5">
+                        <span class="text-[10px] border border-slate-200 px-2 py-1 rounded-full text-slate-600 bg-slate-50">期限: ${task.date || '未設定'}</span>
+                        <span class="text-[10px] border px-2 py-1 rounded-full font-bold ${priority.className}">優先度: ${priority.label}</span>
+                        <span class="text-[10px] px-2 py-1 rounded-full ${catData.bg} ${catData.color} font-bold">${catData.label}</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 pt-1">
+                        <button type="button" onclick="openEditModal('${layer}', ${idx})" class="mobile-board-action rounded-lg bg-indigo-50 text-indigo-700 text-[12px] font-black">編集</button>
+                        <button type="button" onclick="deleteTask('${layer}', ${task.id})" class="mobile-board-action rounded-lg bg-rose-50 text-rose-600 text-[12px] font-black">削除</button>
+                    </div>
+                </article>
+            `;
+        }
+
+        function renderMobileBoard() {
+            const container = document.getElementById('mobile-board-container');
+            if(!container) return;
+            container.innerHTML = MOBILE_BOARD_SECTIONS.map((section) => {
+                const tasks = (taskStore[section.layer] || []).map((task, idx) => ({ task, idx }));
+                const activeCount = tasks.filter(({ task }) => !task.done).length;
+                const totalCount = tasks.length;
+                const isOpen = mobileBoardExpanded[section.layer];
+                const body = tasks.length
+                    ? tasks.map(({ task, idx }) => renderMobileTaskCard(section.layer, task, idx)).join('')
+                    : '<p class="text-[12px] text-slate-400 text-center py-5 bg-white border border-dashed border-slate-200 rounded-lg">タスクはありません</p>';
+                return `
+                    <section class="bg-white/80 border border-slate-200 rounded-xl shadow-xs overflow-hidden">
+                        <button type="button" onclick="toggleMobileBoardSection('${section.layer}')" class="w-full min-h-[54px] px-3 py-2 flex items-center justify-between gap-3 text-left">
+                            <span class="flex items-center gap-2 min-w-0">
+                                <span class="w-2.5 h-8 rounded-full ${section.accent} shrink-0"></span>
+                                <span class="min-w-0">
+                                    <span class="block text-sm font-black text-slate-900">${section.title}</span>
+                                    <span class="block text-[10px] text-slate-500 font-bold">未完了 ${activeCount} / 合計 ${totalCount}</span>
+                                </span>
+                            </span>
+                            <span class="w-9 h-9 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-black">${isOpen ? '-' : '+'}</span>
+                        </button>
+                        <div class="${isOpen ? 'block' : 'hidden'} px-3 pb-3 space-y-2">${body}</div>
+                    </section>
+                `;
+            }).join('');
+        }
+
+        function getAncestorColorStatus(layer, parentId) {
+            if (!parentId) return { colorIndex: null, hasDoneAncestor: false };
+            let currentLayer = layer;
+            let currentParentId = parentId;
+            let hasDoneAncestor = false;
+
+            while (currentLayer !== 'longTerm') {
+                const nextLayer = getParentLayer(currentLayer);
+                const pTask = taskStore[nextLayer]?.find(t => t.id === currentParentId);
+                if (!pTask) break;
+                
+                if (pTask.done) {
+                    hasDoneAncestor = true;
+                }
+
+                if (nextLayer === 'longTerm') {
+                    return { 
+                        colorIndex: pTask.colorIndex !== undefined ? pTask.colorIndex : null, 
+                        hasDoneAncestor: hasDoneAncestor 
+                    };
+                }
+                currentParentId = pTask.parentId;
+                currentLayer = nextLayer;
+            }
+            return { colorIndex: null, hasDoneAncestor: hasDoneAncestor };
+        }
+
+        function updateParentDropdowns() {
+            const layers = LAYERS.slice(1);
+            layers.forEach(layer => {
+                const parentLayer = getParentLayer(layer);
+                const sel = document.getElementById(`select-${layer}`);
+                if(sel) {
+                    const currentVal = sel.value;
+                    sel.innerHTML = `<option value="">🎯 連動する親目標を選択...</option>`;
+                    taskStore[parentLayer].forEach(p => {
+                        if(!p.done) {
+                            sel.innerHTML += `<option value="${p.id}">${p.text}</option>`;
+                        }
+                    });
+                    sel.value = currentVal;
+                }
+            });
+        }
+
+        function toggleLaneExpand(layer) {
+            laneExpanded[layer] = !laneExpanded[layer];
+            renderBoard();
+        }
+
+        function renderBoard() {
+            const layers = LAYERS;
+            layers.forEach(layer => {
+                const activeLane = document.getElementById(`lane-${layer}`);
+                const doneLane = document.getElementById(`done-lane-layer-${layer}`) || document.getElementById(`done-lane-${layer}`);
+                if(!activeLane) return;
+
+                let activeHtml = '';
+                let doneHtml = '';
+                let activeCount = 0;
+                let doneCount = 0;
+
+                taskStore[layer].forEach((t, idx) => {
+                    const currentCat = t.cat || 'none';
+                    const catData = CATEGORIES[currentCat] || CATEGORIES['none'];
+                    
+                    let parentText = "";
+                    if(t.parentId) {
+                        const pLayer = getParentLayer(layer);
+                        const pTask = taskStore[pLayer].find(pt => pt.id === t.parentId);
+                        if(pTask) {
+                            const doneBadge = pTask.done ? `<span class="text-[8px] bg-rose-100 text-rose-600 px-1 rounded ml-1 font-bold">完了済</span>` : '';
+                            parentText = `<span class="text-[9px] bg-slate-100 text-slate-500 px-1 rounded block truncate mt-0.5 max-w-full flex items-center">🎯 親: ${escapeHTML(pTask.text)}${doneBadge}</span>`;
+                        }
+                    }
+
+                    const dateBadge = t.date ? `<span class="text-[8px] border border-slate-200 px-1 rounded text-slate-400 font-mono">${t.date.substring(5)}迄</span>` : '';
+                    const priority = PRIORITY_CONFIG[t.priority || 'medium'] || PRIORITY_CONFIG.medium;
+                    const project = getProject(t.projectId);
+                    const projectBadge = project ? `<span class="text-[8px] border px-1 rounded font-bold" style="color:${project.color};border-color:${project.color}33;background:${project.color}12">${escapeHTML(project.name)}</span>` : '';
+
+                    // 👑 親目標のカラーおよび完了ステータスを取得
+                    let ancestorInfo = (layer === 'longTerm') 
+                        ? { colorIndex: t.colorIndex, hasDoneAncestor: false } 
+                        : getAncestorColorStatus(layer, t.parentId);
+
+                    let cardStyleClass = "";
+                    if (ancestorInfo.colorIndex !== null && COLOR_PALETTE[ancestorInfo.colorIndex] && !ancestorInfo.hasDoneAncestor) {
+                        // ① 親が存在し、かつ先祖に「完了タスク」が一つもない正常ルート
+                        const palette = COLOR_PALETTE[ancestorInfo.colorIndex];
+                        if (layer === 'longTerm') {
+                            cardStyleClass = `border-t-4 ${palette.border}`;
+                        } else {
+                            cardStyleClass = `border-l-4 ${palette.borderLeft}`;
+                        }
+                    } else {
+                        // ② 親が最初からいない（独立）、または先祖のいずれかがすでに完了している場合 ＝ グレーカラー化
+                        if (layer === 'longTerm') {
+                            cardStyleClass = `border-t-4 border-t-slate-400`;
+                        } else {
+                            cardStyleClass = `border-l-4 border-l-slate-400`;
+                        }
+                    }
+
+                    if(!t.done) {
+                        activeCount++;
+                        activeHtml += `
+                            <div class="task-card bg-white p-2.5 rounded-lg shadow-2xs border border-slate-200/80 hover:border-slate-300 transition-all ${cardStyleClass} space-y-1 relative group text-[11px]">
+                                <div class="flex items-start gap-1.5 justify-between">
+                                    <label class="flex items-start gap-1.5 font-semibold text-slate-800 cursor-pointer flex-1 min-w-0 break-all leading-tight">
+                                        <input type="checkbox" onclick="toggleTask('${layer}', ${t.id})" class="mt-0.5 rounded text-indigo-600 focus:ring-indigo-400 shrink-0">
+                                        <span>${escapeHTML(t.text)}</span>
+                                    </label>
+                                    <div class="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 shrink-0 ml-1">
+                                        <button onclick="openEditModal('${layer}', ${idx})" class="text-slate-400 hover:text-indigo-600 cursor-pointer text-[10px]">✏️</button>
+                                        <button onclick="deleteTask('${layer}', ${t.id})" class="text-slate-400 hover:text-rose-500 cursor-pointer text-[10px]">✕</button>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-1 flex-wrap pt-0.5">
+                                    <span class="text-[8px] bg-slate-100 text-slate-500 px-1 rounded font-bold">${catData.label.split(' ')[1]}</span>
+                                    ${dateBadge}
+                                    <span class="text-[8px] border px-1 rounded font-bold ${priority.className}">優先:${priority.label}</span>
+                                    ${projectBadge}
+                                </div>
+                                ${parentText}
+                            </div>
+                        `;
+                    } else {
+                        doneCount++;
+                        doneHtml += `
+                            <div class="bg-slate-100/70 p-2 rounded-lg border border-slate-200/40 flex items-center justify-between gap-1 text-[11px] opacity-60">
+                                <label class="flex items-center gap-1.5 text-slate-400 line-through cursor-pointer truncate flex-1">
+                                    <input type="checkbox" checked onclick="toggleTask('${layer}', ${t.id})" class="rounded text-slate-400 focus:ring-slate-300 shrink-0">
+                                    <span class="truncate">${escapeHTML(t.text)}</span>
+                                </label>
+                                <button onclick="deleteTask('${layer}', ${t.id})" class="text-slate-300 hover:text-rose-500 cursor-pointer text-[10px] shrink-0">✕</button>
+                            </div>
+                        `;
+                    }
+                });
+
+                activeLane.innerHTML = activeHtml || `<p class="text-[10px] text-slate-400 text-center py-4 bg-white/40 border border-dashed border-slate-300 rounded-lg">タスクはありません</p>`;
+                document.getElementById(`count-${layer}`).innerText = activeCount + doneCount;
+
+                if(doneHtml) {
+                    const isExpanded = laneExpanded[layer];
+                    doneLane.innerHTML = `
+                        <div class="mt-1">
+                            <button onclick="toggleLaneExpand('${layer}')" class="text-[9px] text-slate-400 hover:text-slate-600 font-bold flex items-center gap-0.5 cursor-pointer py-1">
+                                ${isExpanded ? '▼' : '▶'} 完了済みのタスク (${doneCount})
+                            </button>
+                            <div class="${isExpanded ? 'space-y-1.5 mt-1' : 'hidden'}">${doneHtml}</div>
+                        </div>
+                    `;
+                } else {
+                    doneLane.innerHTML = '';
+                }
+            });
+            updateParentDropdowns();
+        }
+
+        function populateProjectSelect(selectEl, selectedValue = '') {
+            if(!selectEl) return;
+            selectEl.innerHTML = '<option value="">プロジェクトなし</option>';
+            projectStore.forEach((project) => {
+                selectEl.innerHTML += `<option value="${project.id}" ${Number(selectedValue) === project.id ? 'selected' : ''}>${escapeHTML(project.name)}</option>`;
+            });
+        }
+
+        function addProject() {
+            const input = $('input-project-name');
+            const name = input.value.trim();
+            if(!name) return;
+            const colors = ['#4f46e5', '#10b981', '#f59e0b', '#f43f5e', '#0ea5e9'];
+            projectStore.push({ id: Date.now(), name, color: colors[projectStore.length % colors.length] });
+            input.value = '';
+            saveAllData();
+            refreshProjectControls();
+            renderHome();
+        }
+
+        function deleteProject(projectId) {
+            const id = Number(projectId);
+            projectStore = projectStore.filter((project) => project.id !== id);
+            LAYERS.forEach((layer) => taskStore[layer].forEach((task) => {
+                if(Number(task.projectId) === id) task.projectId = '';
+            }));
+            saveAllData();
+            refreshProjectControls();
+            renderHome();
+            renderBoard();
+        }
+
+        function updateStreak() {
+            const today = getTodayString();
+            const { total, percent } = getTodayStats();
+            if(total === 0 || percent < 100 || streakStore.lastCompletedDate === today) return;
+
+            const yesterday = new Date(today);
+            yesterday.setDate(yesterday.getDate() - 1);
+            const yesterdayStr = yesterday.toISOString().split('T')[0];
+            streakStore.count = streakStore.lastCompletedDate === yesterdayStr ? streakStore.count + 1 : 1;
+            streakStore.lastCompletedDate = today;
+            if(!streakStore.completedDates.includes(today)) streakStore.completedDates.push(today);
+        }
+
+        function getDummyAdvice(stats) {
+            if(stats.total === 0) return '今日はまだタスクがありません。まずは5分で終わる小さな行動を1つ追加して、流れを作りましょう。';
+            const highLeft = stats.tasks.filter((task) => !task.done && task.priority === 'high').length;
+            if(stats.percent === 100) return '今日のタスクは完了です。明日の自分が助かるように、次の一手だけメモしておきましょう。';
+            if(highLeft > 0) return `高優先タスクが${highLeft}件残っています。通知や寄り道を閉じて、まず1件だけ完了させるのがおすすめです。`;
+            if(stats.percent >= 60) return 'いいペースです。残りは軽い順に片づけると、達成率を一気に伸ばせます。';
+            return '今日はまだ伸びしろがあります。優先順位「高」から1つ選び、25分だけ集中してみましょう。';
+        }
+
+        function renderHome() {
+            const stats = getTodayStats();
+            const today = new Date();
+            $('home-date-label').innerText = today.toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
+            $('today-completion-rate').innerText = `${stats.percent}%`;
+            $('today-progress-bar').style.width = `${stats.percent}%`;
+            $('streak-days').innerText = streakStore.count || 0;
+            $('streak-status').innerText = streakStore.lastCompletedDate === getTodayString() ? '今日も達成済みです。' : '今日のタスクをすべて完了すると更新されます。';
+            $('ai-advice').innerText = getDummyAdvice(stats);
+
+            const list = $('home-today-list');
+            list.innerHTML = stats.tasks.map((task) => {
+                const priority = PRIORITY_CONFIG[task.priority || 'medium'] || PRIORITY_CONFIG.medium;
+                const project = getProject(task.projectId);
+                return `
+                    <div class="flex items-start justify-between gap-3 p-3 rounded-lg border ${task.done ? 'bg-slate-50 border-slate-100 opacity-60' : 'bg-white border-slate-200'}">
+                        <label class="flex items-start gap-2 min-w-0 cursor-pointer">
+                            <input type="checkbox" ${task.done ? 'checked' : ''} onclick="toggleTask('today', ${task.id})" class="mt-0.5 rounded text-indigo-600 focus:ring-indigo-400">
+                            <span class="text-[12px] font-bold ${task.done ? 'line-through text-slate-400' : 'text-slate-800'}">${escapeHTML(task.text)}</span>
+                        </label>
+                        <div class="flex gap-1 flex-wrap justify-end shrink-0">
+                            <span class="text-[9px] border px-1.5 py-0.5 rounded font-bold ${priority.className}">${priority.label}</span>
+                            ${project ? `<span class="text-[9px] border px-1.5 py-0.5 rounded font-bold" style="color:${project.color};border-color:${project.color}33;background:${project.color}12">${escapeHTML(project.name)}</span>` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('') || '<p class="text-[12px] text-slate-400 text-center py-8 border border-dashed border-slate-200 rounded-lg">今日のタスクはありません。</p>';
+
+            renderProjects();
+            renderCalendar();
+        }
+
+        function renderProjects() {
+            $('project-count').innerText = `${projectStore.length}`;
+            const allTasks = getAllTasks();
+            $('project-list').innerHTML = projectStore.map((project) => {
+                const related = allTasks.filter((task) => Number(task.projectId) === project.id);
+                const done = related.filter((task) => task.done).length;
+                const percent = related.length ? Math.round((done / related.length) * 100) : 0;
+                return `
+                    <div class="p-2.5 border border-slate-100 rounded-lg bg-slate-50/60">
+                        <div class="flex items-center justify-between gap-2">
+                            <div class="min-w-0">
+                                <p class="text-[12px] font-black text-slate-800 truncate"><span style="color:${project.color}">●</span> ${escapeHTML(project.name)}</p>
+                                <p class="text-[9px] text-slate-400 font-bold">${done}/${related.length} 完了</p>
+                            </div>
+                            <button onclick="deleteProject(${project.id})" class="text-slate-300 hover:text-rose-500 text-[11px] font-bold">✕</button>
+                        </div>
+                        <div class="mt-2 h-1.5 bg-white rounded-full overflow-hidden"><div class="h-full rounded-full" style="width:${percent}%;background:${project.color}"></div></div>
+                    </div>
+                `;
+            }).join('') || '<p class="text-[11px] text-slate-400 text-center py-4">プロジェクトはまだありません。</p>';
+        }
+
+        function renderCalendar() {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = now.getMonth();
+            $('calendar-month-label').innerText = `${year}/${String(month + 1).padStart(2, '0')}`;
+            const first = new Date(year, month, 1);
+            const last = new Date(year, month + 1, 0);
+            const tasksByDate = getAllTasks().reduce((acc, task) => {
+                if(task.date) (acc[task.date] ||= []).push(task);
+                return acc;
+            }, {});
+            const cells = [];
+            for(let i = 0; i < first.getDay(); i++) cells.push('<div class="min-h-16 rounded-lg bg-slate-50/50"></div>');
+            for(let day = 1; day <= last.getDate(); day++) {
+                const date = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                const dayTasks = tasksByDate[date] || [];
+                const isToday = date === getTodayString();
+                cells.push(`
+                    <div class="min-h-16 rounded-lg border p-1.5 ${isToday ? 'border-indigo-300 bg-indigo-50' : 'border-slate-100 bg-slate-50/70'}">
+                        <div class="text-[10px] font-black ${isToday ? 'text-indigo-700' : 'text-slate-500'}">${day}</div>
+                        <div class="mt-1 space-y-0.5">
+                            ${dayTasks.slice(0, 3).map((task) => `<div class="truncate text-[8px] px-1 rounded ${task.done ? 'bg-slate-200 text-slate-400 line-through' : 'bg-white text-slate-600'}">${escapeHTML(task.text)}</div>`).join('')}
+                            ${dayTasks.length > 3 ? `<div class="text-[8px] text-slate-400 font-bold">+${dayTasks.length - 3}</div>` : ''}
+                        </div>
+                    </div>
+                `);
+            }
+            $('calendar-grid').innerHTML = cells.join('');
+        }
+
+        function renderDashboardData() {
+            const container = document.getElementById('charts-container');
+            if(!container) return;
+            container.innerHTML = '';
+            
+            Object.keys(chartInstances).forEach(k => { if(chartInstances[k]) chartInstances[k].destroy(); });
+            chartInstances = {};
+
+            const topGoals = taskStore.longTerm.filter(g => !g.done);
+            topGoals.forEach((g, idx) => {
+                const totalSubs = countAllSubTasks(g.id);
+                const doneSubs = countAllSubTasks(g.id, true);
+                let percent = 0;
+                if(totalSubs > 0) percent = Math.round((doneSubs / totalSubs) * 100);
+                else if(g.done) percent = 100;
+
+                const palette = COLOR_PALETTE[g.colorIndex || 0] || COLOR_PALETTE[0];
+
+                container.innerHTML += `
+                    <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-100 flex items-center gap-3 shadow-2xs">
+                        <div class="w-14 h-14 shrink-0 relative flex items-center justify-center">
+                            <canvas id="donut-chart-${g.id}"></canvas>
+                            <span class="absolute text-[10px] font-black text-slate-700">${percent}%</span>
+                        </div>
+                        <div class="min-w-0 flex-1">
+                            <p class="text-[11px] font-black text-slate-800 truncate" title="${escapeHTML(g.text)}">${palette.dot} ${escapeHTML(g.text)}</p>
+                            <p class="text-[9px] text-slate-400 font-bold mt-0.5">孫・子タスク: ${doneSubs}/${totalSubs} 完了</p>
+                        </div>
+                    </div>
+                `;
+
+                setTimeout(() => {
+                    const ctx = document.getElementById(`donut-chart-${g.id}`);
+                    if(ctx) {
+                        chartInstances[g.id] = new Chart(ctx, {
+                            type: 'doughnut',
+                            data: {
+                                datasets: [{
+                                    data: [percent, 100 - percent],
+                                    backgroundColor: [palette.hex, '#e2e8f0'],
+                                    borderWidth: 0
+                                }]
+                            },
+                            options: {
+                                cutout: '76%',
+                                plugins: { tooltip: { enabled: false }, legend: { display: false } },
+                                responsive: true, maintainAspectRatio: false
+                            }
+                        });
+                    }
+                }, 10);
+            });
+
+            if(topGoals.length === 0) {
+                container.innerHTML = `<div class="col-span-2 py-6 text-center text-slate-400 text-[11px]">中長期目標をボード画面で追加すると、進捗グラフがここに自動構築されます。</div>`;
+            }
+
+            renderRadarChart();
+
+            const ltContainer = document.getElementById('dashboard-longterm-container');
+            if(ltContainer) {
+                ltContainer.innerHTML = '';
+                taskStore.longTerm.forEach(g => {
+                    if(!g.done) {
+                        const catLabel = CATEGORIES[g.cat || 'none']?.label || "";
+                        const daysLeft = g.date ? Math.ceil((new Date(g.date) - new Date()) / (1000*60*60*24)) : null;
+                        const daysText = daysLeft !== null ? (daysLeft >= 0 ? `⌛ 残り ${daysLeft} 日` : `⚠️ 期限超過 ${Math.abs(daysLeft)} 日`) : '⌛ 期限なし';
+                        ltContainer.innerHTML += `
+                            <div class="p-2 border border-slate-100 rounded-lg bg-slate-50/50 text-[11px]">
+                                <p class="font-bold text-slate-800 truncate">🚀 ${escapeHTML(g.text)}</p>
+                                <div class="flex justify-between items-center text-[9px] text-slate-400 font-bold mt-1">
+                                    <span>${catLabel}</span>
+                                    <span class="${daysLeft < 0 ? 'text-rose-500':''}">${daysText}</span>
+                                </div>
+                            </div>
+                        `;
+                    }
+                });
+                if(taskStore.longTerm.filter(t=>!t.done).length === 0) {
+                    ltContainer.innerHTML = `<p class="text-[11px] text-slate-400 text-center py-2 col-span-2">現在アクティブな最上位目標はありません。</p>`;
+                }
+            }
+
+            renderRoutineList();
+            renderBucketList();
+        }
+
+        function countAllSubTasks(parentGoalId, onlyDone = false) {
+            let count = 0;
+            const shortGoals = taskStore.shortTerm.filter(t => t.parentId === parentGoalId);
+            shortGoals.forEach(sg => {
+                if(!onlyDone || sg.done) count++;
+                const yearActions = taskStore.thisYear.filter(t => t.parentId === sg.id);
+                yearActions.forEach(ya => {
+                    if(!onlyDone || ya.done) count++;
+                    const weekTasks = taskStore.thisWeek.filter(t => t.parentId === ya.id);
+                    weekTasks.forEach(wt => {
+                        if(!onlyDone || wt.done) count++;
+                        const dayTasks = taskStore.today.filter(t => t.parentId === wt.id);
+                        dayTasks.forEach(dt => {
+                            if(!onlyDone || dt.done) count++;
+                        });
+                    });
+                });
+            });
+            return count;
+        }
+
+        function renderRadarChart() {
+            const ctx = document.getElementById('balanceChart');
+            if(!ctx) return;
+
+            const counts = { work: 0, health: 0, hobby: 0, life: 0, mind: 0 };
+            const layers = LAYERS;
+            
+            layers.forEach(layer => {
+                taskStore[layer].forEach(t => {
+                    const currentCat = t.cat || 'none';
+                    if(counts[currentCat] !== undefined) counts[currentCat]++;
+                });
+            });
+
+            const dataValues = [counts.work, counts.health, counts.hobby, counts.life, counts.mind];
+
+            if(balanceChartInstance) balanceChartInstance.destroy();
+
+            balanceChartInstance = new Chart(ctx, {
+                type: 'radar',
+                data: {
+                    labels: ['💰 工作・金', '🏃 健康・美', '🎨 趣味・教養', '🏠 家族・生活', '🧘 精神・整'],
+                    datasets: [{
+                        label: 'タスク数配分',
+                        data: dataValues,
+                        backgroundColor: 'rgba(79, 70, 229, 0.15)',
+                        borderColor: '#4f46e5',
+                        borderWidth: 1.5,
+                        pointBackgroundColor: '#4f46e5',
+                        pointRadius: 2
+                    }]
+                },
+                options: {
+                    scales: {
+                        r: {
+                            min: 0,
+                            ticks: { display: false, stepSize: 1 },
+                            grid: { color: '#f1f5f9' },
+                            angleLines: { color: '#e2e8f0' },
+                            pointLabels: { font: { size: 9, weight: 'bold' }, color: '#475569' }
+                        }
+                    },
+                    plugins: { legend: { display: false } },
+                    responsive: true, maintainAspectRatio: false
+                }
+            });
+        }
+
+        function renderBucketList() {
+            const container = document.getElementById('bucket-list-container');
+            if(!container) return;
+            container.innerHTML = '';
+            bucketList.forEach((b, idx) => {
+                container.innerHTML += `
+                    <div class="flex items-center justify-between gap-1.5 p-2 rounded-lg bg-slate-50 border border-slate-100 text-[11px] ${b.done ? 'opacity-50' : ''}">
+                        <label class="flex items-center gap-2 cursor-pointer min-w-0 flex-1 font-medium ${b.done ? 'line-through text-slate-400' : 'text-slate-700'}">
+                            <input type="checkbox" ${b.done ? 'checked':''} onclick="toggleBucketItem(${idx})" class="rounded text-indigo-600 focus:ring-indigo-400 shrink-0">
+                            <span class="truncate">${escapeHTML(b.text)}</span>
+                        </label>
+                        <button onclick="deleteBucketItem(${idx})" class="text-slate-300 hover:text-rose-500 font-bold px-1 cursor-pointer shrink-0">✕</button>
+                    </div>
+                `;
+            });
+            if(bucketList.length === 0) {
+                container.innerHTML = `<p class="text-[11px] text-slate-400 text-center py-8">バケットリストはありません。</p>`;
+            }
+        }
+
+        function addBucketItem() {
+            const input = document.getElementById('input-bucket');
+            const val = input.value.trim();
+            if(!val) return;
+            bucketList.push({ text: val, done: false });
+            input.value = '';
+            saveAllData();
+            renderBucketList();
+        }
+
+        function toggleBucketItem(idx) {
+            bucketList[idx].done = !bucketList[idx].done;
+            saveAllData();
+            renderBucketList();
+        }
+
+        function deleteBucketItem(idx) {
+            const removed = bucketList[idx];
+            bucketList.splice(idx, 1);
+            saveAllData();
+            renderBucketList();
+            showUndoToast('バケットリストから削除しました', () => {
+                bucketList.splice(idx, 0, removed);
+                saveAllData();
+                renderBucketList();
+            });
+        }
+
+        function openBirthModal() {
+            document.getElementById('input-birth').value = birthday;
+            document.getElementById('birthModal').classList.remove('hidden');
+        }
+
+        function closeBirthModal() {
+            document.getElementById('birthModal').classList.add('hidden');
+        }
+
+        function saveBirthday() {
+            const val = document.getElementById('input-birth').value;
+            if(val) {
+                birthday = val;
+                storage.write(STORAGE_KEYS.birth, birthday);
+                closeBirthModal();
+                updateLifeTimer();
+            }
+        }
+
+        function updateLifeTimer() {
+            const elY = document.getElementById('timer-years');
+            if(!elY) return;
+            const expectancy = getLifeExpectancy();
+            const labelEl = document.getElementById('timer-expectancy-label');
+            if(labelEl) labelEl.innerText = `平均寿命${expectancy}歳`;
+            const birthDate = new Date(birthday);
+            const deathDate = new Date(birthDate.getTime());
+            deathDate.setFullYear(birthDate.getFullYear() + expectancy);
+            
+            const now = new Date();
+            const diffMs = deathDate - now;
+
+            if(diffMs <= 0) {
+                document.getElementById('timer-years').innerText = "0";
+                document.getElementById('timer-days').innerText = "0";
+                document.getElementById('timer-hours').innerText = "0";
+                document.getElementById('timer-mins').innerText = "0";
+                document.getElementById('timer-secs').innerText = "0";
+                return;
+            }
+
+            const secs = Math.floor(diffMs / 1000);
+            const mins = Math.floor(secs / 60);
+            const hours = Math.floor(mins / 60);
+            const days = Math.floor(hours / 24);
+            const years = (days / 365.25).toFixed(2);
+
+            elY.innerText = years;
+            document.getElementById('timer-days').innerText = days.toLocaleString();
+            document.getElementById('timer-hours').innerText = (hours % 24).toString().padStart(2, '0');
+            document.getElementById('timer-mins').innerText = (mins % 60).toString().padStart(2, '0');
+            document.getElementById('timer-secs').innerText = (secs % 60).toString().padStart(2, '0');
+        }
+
+        function scrollToLane(layer) {
+            const col = document.getElementById(`col-${layer}`);
+            if(col) {
+                col.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+            }
+        }
+
+        function loadPlannerInputs() {
+            const saved = storage.read(STORAGE_KEYS.planner, null);
+            if(saved && typeof saved === 'object') {
+                plannerInput = { ...plannerInput, ...saved };
+                $('plan-age').value = plannerInput.age;
+                $('plan-gender').value = plannerInput.gender;
+                $('plan-income').value = plannerInput.income;
+                $('plan-expense').value = plannerInput.expense;
+                $('plan-savings').value = plannerInput.savings;
+                $('plan-nisa').value = plannerInput.nisa;
+                $('plan-priority').value = plannerInput.priority;
+                $('plan-marriage-age').value = plannerInput.marriageAge;
+                $('plan-marriage-cost').value = plannerInput.marriageCost;
+                $('plan-housing-age').value = plannerInput.housingAge;
+                $('plan-housing-cost').value = plannerInput.housingCost;
+            }
+        }
+
+        function calculateLifePlan() {
+            if(!document.getElementById('plan-age')) return;
+            plannerInput.age = Math.max(0, parseFloat(document.getElementById('plan-age').value) || 30);
+            plannerInput.gender = document.getElementById('plan-gender').value;
+            plannerInput.income = Math.max(0, parseFloat(document.getElementById('plan-income').value) || 0);
+            plannerInput.expense = Math.max(0, parseFloat(document.getElementById('plan-expense').value) || 0);
+            plannerInput.savings = parseFloat(document.getElementById('plan-savings').value) || 0;
+            plannerInput.nisa = Math.max(0, parseFloat(document.getElementById('plan-nisa').value) || 0);
+            plannerInput.priority = document.getElementById('plan-priority').value;
+            plannerInput.marriageAge = Math.max(plannerInput.age, parseFloat(document.getElementById('plan-marriage-age').value) || 35);
+            plannerInput.marriageCost = Math.max(0, parseFloat(document.getElementById('plan-marriage-cost').value) || 0);
+            plannerInput.housingAge = Math.max(plannerInput.age, parseFloat(document.getElementById('plan-housing-age').value) || 38);
+            plannerInput.housingCost = Math.max(0, parseFloat(document.getElementById('plan-housing-cost').value) || 0);
+
+            storage.write(STORAGE_KEYS.planner, plannerInput);
+            updateLifeTimer();
+
+            document.getElementById('plan-uncalculated').classList.add('hidden');
+            document.getElementById('plan-output-section').classList.remove('hidden');
+
+            const timelineBody = document.getElementById('timeline-body');
+            timelineBody.innerHTML = '';
+            
+            const events = [
+                { age: plannerInput.age, label: "🏁 現在 (ライフプラン設計始動)", cost: 0 },
+                { age: plannerInput.marriageAge, label: "💍 予定: 結婚・新生活スタート", cost: plannerInput.marriageCost },
+                { age: plannerInput.housingAge, label: "🏠 予定: 住宅購入 (頭金等決済分)", cost: plannerInput.housingCost },
+                { age: 60, label: "💼 定年到達・シニアキャリアへの移行", cost: 0 },
+                { age: 65, label: "👴 公的年金受給開始・老後生活期", cost: 0 }
+            ];
+
+            events.sort((a,b) => a.age - b.age);
+            events.forEach(ev => {
+                timelineBody.innerHTML += `
+                    <tr class="hover:bg-slate-50 transition-colors">
+                        <td class="py-2 font-bold text-slate-700">${ev.age} 歳</td>
+                        <td class="py-2 text-slate-600 font-medium">${ev.label}</td>
+                        <td class="py-2 text-right font-mono font-bold ${ev.cost>0?'text-rose-500':'text-slate-400'}">${ev.cost > 0 ? ev.cost + ' 万円' : '-'}</td>
+                    </tr>
+                `;
+            });
+
+            const adviceBox = document.getElementById('value-advice-content');
+            let advHtml = '';
+            if (plannerInput.priority === 'fire') {
+                advHtml = `<p>🔥 <strong>早期FIRE達成モード:</strong> 毎月の収支差額（手取り ${plannerInput.income}万 − 支出 ${plannerInput.expense}万 ＝ 基礎余剰 ${plannerInput.income - plannerInput.expense}万円）をほぼ全額投資に投じる前提が推奨されます。極力不要な固定費を削り、NISA枠を最速で埋めるロードマップを構築してください。</p>`;
+            } else if (plannerInput.priority === 'family') {
+                advHtml = `<p>🏠 <strong>家族・ライフ優先モード:</strong> 結婚（${plannerInput.marriageAge}歳）や住宅取得（${plannerInput.housingAge}歳）のイベントが重なる時期に、手元の現金がショートしないような守りの設計が肝要です。過度な投資集中を避け、数年内に使う結婚・住宅費用は「現金預金」として安全に確保しましょう。</p>`;
+            } else if (plannerInput.priority === 'career') {
+                advHtml = `<p>🚀 <strong>キャリア・自己投資集中モード:</strong> 手取り金額の10〜15%をスキルアップ、資格取得、ビジネスツール等の自己投資枠に固定計上することをお勧めします。得られた無形資産を源泉として将来の稼ぐ力を最大化し、手取りを一段上に引き上げる戦略が最も高効率です。</p>`;
+            } else {
+                advHtml = `<p>💼 <strong>趣味と仕事の両立バランスモード:</strong> 毎月一定額を新NISA（${plannerInput.nisa}万円）で手堅く資産運用に回しつつ、残りの余剰金は旅行やライフイベントの充実資金として「今しかできない体験」に惜しみなく投資するのが、人生全体の幸福度を最大化するアプローチです。</p>`;
+            }
+            adviceBox.innerHTML = advHtml;
+
+            let currentAge = plannerInput.age;
+            let currentCash = plannerInput.savings;
+            let currentNisa = 0; 
+            
+            const labels = [];
+            const cashData = [];
+            const nisaData = [];
+            const totalData = [];
+
+            const monthlySurplus = plannerInput.income - plannerInput.expense; 
+            const nisaMonthly = plannerInput.nisa;
+            const cashMonthly = monthlySurplus - nisaMonthly; 
+
+            while(currentAge <= 65) {
+                labels.push(`${currentAge}歳`);
+                cashData.push(Math.round(currentCash));
+                nisaData.push(Math.round(currentNisa));
+                totalData.push(Math.round(currentCash + currentNisa));
+
+                currentAge++;
+                currentCash += (cashMonthly * 12);
+                
+                for(let m=0; m<12; m++) {
+                    currentNisa += nisaMonthly;
+                    currentNisa *= (1 + 0.04 / 12); 
+                }
+
+                if(currentAge === plannerInput.marriageAge) {
+                    currentCash -= plannerInput.marriageCost;
+                }
+                if(currentAge === plannerInput.housingAge) {
+                    currentCash -= plannerInput.housingCost;
+                }
+            }
+
+            const finalCash = Math.max(0, Math.round(currentCash));
+            const finalNisa = Math.round(currentNisa);
+            const totalAsset = finalCash + finalNisa;
+
+            document.getElementById('calc-65-asset').innerText = `${totalAsset.toLocaleString()} 万円`;
+            document.getElementById('calc-65-breakdown').innerText = `(現金預金 ${finalCash.toLocaleString()}万 / NISA運用分 ${finalNisa.toLocaleString()}万)`;
+
+            const chartCtx = document.getElementById('projectionChart');
+            if(projectionChartInstance) projectionChartInstance.destroy();
+
+            projectionChartInstance = new Chart(chartCtx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        { label: '総資産額', data: totalData, borderColor: '#10b981', backgroundColor: 'transparent', borderWidth: 2.5, pointRadius: 1, z: 30 },
+                        { label: '新NISA運用分', data: nisaData, borderColor: '#4f46e5', backgroundColor: 'transparent', borderWidth: 1.5, pointRadius: 0, borderDash: [3, 3] },
+                        { label: '現金貯金', data: cashData, borderColor: '#94a3b8', backgroundColor: 'transparent', borderWidth: 1.5, pointRadius: 0 }
+                    ]
+                },
+                options: {
+                    scales: {
+                        y: { grid: { color: '#f1f5f9' }, ticks: { font: { size: 8 } } },
+                        x: { grid: { display: false }, ticks: { font: { size: 8 } } }
+                    },
+                    plugins: { legend: { display: true, position: 'top', labels: { font: { size: 8 } } } },
+                    responsive: true, maintainAspectRatio: false
+                }
+            });
+
+            const actionsBox = document.getElementById('money-actions');
+            actionsBox.innerHTML = '';
+
+            let action1 = ``;
+            let action2 = ``;
+
+            if (nisaMonthly > 0) {
+                action1 = `<li><strong>1. 新NISA積立の継続と強化：</strong> 毎月 ${nisaMonthly} 万円 of 積立は強力です。年利4%運用で65歳時点で約 <strong>${finalNisa.toLocaleString()} 万円</strong> の資産が構築される見込みです。</li>`;
+            } else {
+                action1 = `<li><strong>1. 今すぐ「新NISA」口座を開設する：</strong> 毎月貯蓄できている余剰金の一部（まずは1〜3万円）を新NISA（全世界株式やS&P500などのインデックスファンド）の積立に回し、資産効率を上げましょう。</li>`;
+            }
+
+            if (finalCash < 500) {
+                action2 = `<li><strong>2. ⚠️ キャッシュフロー（現金）警戒：</strong> 結婚や住宅頭金によって現金貯蓄が大きく削られ、一時的に手元のキャッシュがカツカツになる危険があります。月5千円でも良いので、先取りで貯金の一部を「別口座」へ自動隔離しましょう。</li>`;
+            } else {
+                action2 = `<li><strong>2. キャッシュの健全性クリア：</strong> ライフイベントを経ても十分な手元現金預金が確保される見通しです。この調子で堅実な家計コントロールを維持してください。</li>`;
+            }
+
+            actionsBox.innerHTML = `<ul class="list-none space-y-1">${action1}${action2}</ul>`;
+        }
+
+        function saveAllData() {
+            storage.write(STORAGE_KEYS.tasks, taskStore);
+            storage.write(STORAGE_KEYS.buckets, bucketList);
+            storage.write(STORAGE_KEYS.routines, routineStore);
+            storage.write(STORAGE_KEYS.projects, projectStore);
+            storage.write(STORAGE_KEYS.streak, streakStore);
+        }
+
+        function loadAllData() {
+            taskStore = storage.read(STORAGE_KEYS.tasks, cloneData(DEFAULT_TASKS));
+            bucketList = storage.read(STORAGE_KEYS.buckets, [...DEFAULT_BUCKETS]);
+            routineStore = storage.read(STORAGE_KEYS.routines, []);
+            projectStore = storage.read(STORAGE_KEYS.projects, cloneData(DEFAULT_PROJECTS));
+            streakStore = storage.read(STORAGE_KEYS.streak, { count: 0, lastCompletedDate: '', completedDates: [] });
+            birthday = storage.read(STORAGE_KEYS.birth, '1995-01-01') || '1995-01-01';
+            lastCheckedDate = storage.read(STORAGE_KEYS.lastDate, '') || '';
+
+            // Backward compatibility: tolerate older saves missing newly-added lanes or arrays.
+            if(!taskStore || typeof taskStore !== 'object' || Array.isArray(taskStore)) taskStore = cloneData(DEFAULT_TASKS);
+            LAYERS.forEach((key) => { if(!Array.isArray(taskStore[key])) taskStore[key] = []; });
+            if(!Array.isArray(bucketList)) bucketList = [];
+            if(!Array.isArray(routineStore)) routineStore = [];
+            if(!Array.isArray(projectStore)) projectStore = cloneData(DEFAULT_PROJECTS);
+            if(!streakStore || typeof streakStore !== 'object') streakStore = { count: 0, lastCompletedDate: '', completedDates: [] };
+            if(!Array.isArray(streakStore.completedDates)) streakStore.completedDates = [];
+            normalizeAllTasks();
+            refreshProjectControls();
+        }
+
+        function exportAllData() {
+            const backup = {
+                exportedAt: new Date().toISOString(),
+                taskStore, bucketList, routineStore, projectStore, streakStore, birthday,
+                plannerInput, lastCheckedDate
+            };
+            const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            const dateStr = getTodayString();
+            a.href = url;
+            a.download = `life-blueprint-backup-${dateStr}.json`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+        }
+
+        function importAllData(event) {
+            const file = event.target.files[0];
+            if(!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    if(!data.taskStore) throw new Error('invalid backup file');
+                    if(!confirm('現在のデータをこのバックアップファイルの内容で上書きします。よろしいですか？')) return;
+                    taskStore = data.taskStore || cloneData(DEFAULT_TASKS);
+                    bucketList = data.bucketList || [];
+                    routineStore = data.routineStore || [];
+                    projectStore = data.projectStore || cloneData(DEFAULT_PROJECTS);
+                    streakStore = data.streakStore || { count: 0, lastCompletedDate: '', completedDates: [] };
+                    birthday = data.birthday || "1995-01-01";
+                    lastCheckedDate = data.lastCheckedDate || "";
+                    if(data.plannerInput) plannerInput = data.plannerInput;
+                    const keys = LAYERS;
+                    keys.forEach(k => { if(!taskStore[k]) taskStore[k] = []; });
+                    saveAllData();
+                    storage.write(STORAGE_KEYS.birth, birthday);
+                    storage.write(STORAGE_KEYS.lastDate, lastCheckedDate);
+                    storage.write(STORAGE_KEYS.planner, plannerInput);
+                    normalizeAllTasks();
+                    refreshProjectControls();
+                    renderBoard();
+                    renderHome();
+                    renderDashboardData();
+                    loadPlannerInputs();
+                    calculateLifePlan();
+                    updateLifeTimer();
+                    alert('バックアップからの復元が完了しました。');
+                } catch(err) {
+                    alert('ファイルの読み込みに失敗しました。正しいバックアップファイルか確認してください。');
+                    console.error(err);
+                } finally {
+                    event.target.value = '';
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function resetAllData() {
+            if(confirm('すべての目標、習慣、ライフプランプロフィールデータを初期化し、デフォルト状態に戻しますか？')) {
+                storage.clearAppData();
+                initCategoryDropdowns();
+                loadAllData();
+                processRoutines();
+                renderBoard();
+                renderHome();
+                renderDashboardData();
+                loadPlannerInputs();
+                calculateLifePlan();
+                alert('初期化が完了しました。');
+            }
+        }
+
+        // Public handlers kept for the existing inline HTML attributes. These assignments make
+        // the next step toward external modules straightforward without breaking current markup.
+        Object.assign(window, {
+            addBucketItem, addProject, addRoutineItem, addTask, calculateLifePlan, closeBirthModal, closeEditModal,
+            deleteBucketItem, deleteProject, deleteRoutineItem, deleteTask, exportAllData, handleEnter, importAllData,
+            openBirthModal, openEditModal, openQuickTaskModal, openSettingsModal, resetAllData, saveBirthday, saveTaskEdit, scrollToLane,
+            closeQuickTaskModal, closeSettingsModal, submitQuickTask, switchPage, toggleBucketItem, toggleLaneExpand,
+            toggleMobileBoardSection, toggleTask, undoLastDelete
+        });    </script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./service-worker.js').catch((error) => {
+                    console.warn('Service worker registration failed:', error);
+                });
+            });
+        }
+    </script>
+</body>
+</html>
